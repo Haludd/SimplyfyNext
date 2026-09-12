@@ -1,0 +1,31 @@
+{
+  "type": "gloss_lattice",
+  "schema_version": "1.0",
+  "session_id": "10000000-0000-4000-8000-000000000001",
+  "lattice_seq": 0,
+  "utterance_id": "phase1-confident",
+  "language": "sgsl",
+  "timebase": "session_monotonic_ms",
+  "started_at_ms": 1000,
+  "ended_at_ms": 1400,
+  "producer": {
+    "classifier_id": "temporal_classifier",
+    "classifier_version": "1.3.0",
+    "confidence_kind": "calibrated_probability",
+    "calibration_version": "temperature_v2",
+    "vocabulary_version": "sgsl_demo_v1"
+  },
+  "slots": [
+    {
+      "slot_index": 0,
+      "slot_id": "slot-confident-0",
+      "start_ms": 1050,
+      "end_ms": 1350,
+      "candidates": [
+        {"gloss_id": "HELLO", "rank": 1, "confidence": 0.99}
+      ],
+      "resolved_gloss_id": "HELLO",
+      "provenance": "classifier_high_confidence"
+    }
+  ]
+}

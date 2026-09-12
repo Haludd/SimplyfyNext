@@ -1,0 +1,65 @@
+{
+  "type": "gloss_lattice",
+  "schema_version": "1.0",
+  "session_id": "12345678-1234-5678-1234-567812345678",
+  "lattice_seq": 7,
+  "utterance_id": "utterance-42",
+  "language": "sgsl",
+  "timebase": "session_monotonic_ms",
+  "started_at_ms": 1000,
+  "ended_at_ms": 3000,
+  "producer": {
+    "classifier_id": "temporal_classifier",
+    "classifier_version": "1.3.0",
+    "confidence_kind": "calibrated_probability",
+    "calibration_version": "temperature_v2",
+    "vocabulary_version": "sgsl_demo_v1"
+  },
+  "slots": [
+    {
+      "slot_index": 0,
+      "slot_id": "slot-0",
+      "start_ms": 1000,
+      "end_ms": 1300,
+      "candidates": [
+        {"gloss_id": "WATER", "rank": 1, "confidence": 0.96},
+        {"gloss_id": "WHAT", "rank": 2, "confidence": 0.02}
+      ],
+      "resolved_gloss_id": "WATER",
+      "provenance": "classifier_high_confidence"
+    },
+    {
+      "slot_index": 1,
+      "slot_id": "slot-1",
+      "start_ms": 1350,
+      "end_ms": 1700,
+      "candidates": [
+        {"gloss_id": "PLEASE", "rank": 1, "confidence": 0.57},
+        {"gloss_id": "THANK_YOU", "rank": 2, "confidence": 0.31}
+      ],
+      "resolved_gloss_id": "THANK_YOU",
+      "provenance": "top_k_signer_confirmed"
+    },
+    {
+      "slot_index": 2,
+      "slot_id": "slot-2",
+      "start_ms": 1800,
+      "end_ms": 2200,
+      "candidates": [],
+      "resolved_gloss_id": "J-O-H-N",
+      "provenance": "fingerspelled"
+    },
+    {
+      "slot_index": 3,
+      "slot_id": "slot-3",
+      "start_ms": 2300,
+      "end_ms": 2600,
+      "candidates": [
+        {"gloss_id": "TOMORROW", "rank": 1, "confidence": 0.42},
+        {"gloss_id": "YESTERDAY", "rank": 2, "confidence": 0.38}
+      ],
+      "resolved_gloss_id": null,
+      "provenance": "unresolved"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "templates": [
+    {
+      "glosses": [
+        "HELLO"
+      ],
+      "caption": "Hello.",
+      "tts_text": "Hello."
+    },
+    {
+      "glosses": [
+        "THANK_YOU"
+      ],
+      "caption": "Thank you.",
+      "tts_text": "Thank you."
+    },
+    {
+      "glosses": [
+        "HELP"
+      ],
+      "caption": "Help.",
+      "tts_text": "Help."
+    }
+  ]
+}

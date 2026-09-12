@@ -71,7 +71,7 @@ web/models/google_asl_25_v20250723_042752.onnx
 
 It has been exported in this workspace. To recreate it from an authorized
 clone of the upstream repository, install PyTorch and ONNX, then run from
-`appTesting/`:
+`frontend/`:
 
 ```bash
 python3 tool/export_google_asl_onnx.py \
@@ -88,18 +88,19 @@ Confirm the upstream model and dataset terms before shipping it.
 From the repository root, run the word-only local backend:
 
 ```bash
-python3 backend/recognized_words_api.py
+python3 backend/prototypes/frontend_branch_backend/recognized_words_api.py
 ```
 
 Then launch the Flutter web app with its endpoint:
 
 ```bash
-cd appTesting
+cd frontend
 flutter run -d chrome \
   --dart-define=SIGNBRIDGE_WORD_SUBMISSION_URL=http://127.0.0.1:8000/v1/recognized-signs
 ```
 
-The backend stores accepted word events in `backend/data/recognized_words.jsonl`.
+The prototype stores accepted word events in
+`backend/prototypes/frontend_branch_backend/data/recognized_words.jsonl`.
 It rejects raw video, landmarks, feature vectors, and utterance frames. The
 local server permits browser CORS for development; replace that wildcard with
 your deployed frontend origin before production.

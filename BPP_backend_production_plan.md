@@ -1,5 +1,8 @@
 **SIMPLYNEXT BACKEND PRODUCTION PLAN**
 
+> **Integration layout:** Run backend commands from `backend/`. Shared plan
+> documents remain in the repository-root `plan/` directory.
+
 # METADATA
 
 | Field | Value |

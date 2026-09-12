@@ -1,7 +1,7 @@
 import '../models/tracking_models.dart';
 import 'sign_analysis_service.dart';
 
-/// Offline stand-in used only to keep the appTesting UI usable before the
+/// Offline stand-in used only to keep the Flutter UI usable before the
 /// Stage 5/6 classifier is supplied by the next teammate.
 ///
 /// The real integration path is the Stage 4 frame stream -> classifier seam ->

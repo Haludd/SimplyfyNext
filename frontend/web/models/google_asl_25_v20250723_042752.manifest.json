@@ -19,6 +19,6 @@
   "export": {
     "opset": 17,
     "fixed_sequence_length": 16,
-    "notes": "Exported with appTesting/tool/export_google_asl_onnx.py. The binary is ignored by git. Verify upstream licensing before distributing it."
+    "notes": "Exported with frontend/tool/export_google_asl_onnx.py. The binary is ignored by git. Verify upstream licensing before distributing it."
   }
 }

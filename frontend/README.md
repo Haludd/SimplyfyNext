@@ -87,7 +87,7 @@ Chrome camera
   → MediaPipe 21-point hand tracker
   → stable subject/hand tracking state
   → body-relative normalisation
-  → appTesting UI + LandmarkFrame JSON
+  → Flutter UI + LandmarkFrame JSON
   → server-owned LandmarkBatch v1 adapter
   → authenticated WebSocket transport
   → Railway normalisation → segmentation → classification
@@ -193,7 +193,7 @@ testing can work.
 
 ## Full integration handoff
 
-Your current appTesting UI remains unchanged, but the full integration code is
+Your current Flutter UI remains unchanged, but the full integration code is
 now present in the same project:
 
 - `lib/services/state_normalised_tracking_service.dart` adds Stage 3/4 state

@@ -146,7 +146,7 @@ putting the bearer token in a query string.
 
 ## Verification commands
 
-Run from `appTesting/`:
+Run from `frontend/`:
 
 ```text
 flutter test --no-pub

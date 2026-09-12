@@ -48,7 +48,7 @@ Future<void> main() async {
   final TrackingService mediaPipeCapture = kIsWeb
       ? WebTrackingService()
       : DemoTrackingService();
-  // Keep the appTesting UI on top of the complete perception pipeline:
+  // Keep the Flutter UI on top of the complete perception pipeline:
   // MediaPipe capture -> stable tracking state -> body-relative normalisation.
   final TrackingService mediaPipeTracking = StateNormalisedTrackingService(
     mediaPipeCapture,

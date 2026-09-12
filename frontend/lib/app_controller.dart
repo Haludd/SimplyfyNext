@@ -330,7 +330,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     await textToSpeech.speak(text);
   }
 
-  /// Applies a validated backend event to the existing appTesting UI.
+  /// Applies a validated backend event to the existing Flutter UI.
   ///
   /// The transport layer remains separate from the widgets. The teammate who
   /// owns the Stage 5/6 classifier can call this with

@@ -1,5 +1,9 @@
 **SIMPLYNEXT BACKEND ARCHITECTURE**
 
+> **Integration layout:** Backend paths in this document are relative to
+> `backend/`. For example, `src/simplynext/` means
+> `backend/src/simplynext/` from the repository root.
+
 # METADATA
 
 | Field | Value |

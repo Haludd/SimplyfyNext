@@ -49,3 +49,4 @@ data/interim/
 .DS_Store
 Thumbs.db
 desktop.ini
+:memory:.ses

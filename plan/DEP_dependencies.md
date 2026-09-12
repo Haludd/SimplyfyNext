@@ -1,5 +1,8 @@
 **SIMPLYNEXT BACKEND DEPENDENCIES**
 
+> **Integration layout:** Backend paths and commands in this document are
+> relative to `backend/` unless an absolute repository path is shown.
+
 # METADATA
 
 | Field | Value |

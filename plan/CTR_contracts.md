@@ -1,5 +1,9 @@
 **SIMPLYNEXT GLOSSLATTICE V1 CONTRACT**
 
+> **Integration layout:** Backend paths in this document are relative to
+> `backend/`. For example, `tests/fixtures/` means
+> `backend/tests/fixtures/` from the repository root.
+
 # METADATA
 
 | Field | Value |

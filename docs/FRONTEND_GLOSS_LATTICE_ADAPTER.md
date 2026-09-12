@@ -61,7 +61,7 @@ stages to the shared wire boundary. Contract changes still require agreement and
 
 The frontend adapter uses these types:
 
-- `appTesting/lib/contracts/gloss_lattice.dart`
+- `frontend/lib/contracts/gloss_lattice.dart`
   - `GlossLatticeContract`
   - `GlossLatticeLanguage`
   - `GlossProvenance`
@@ -70,11 +70,11 @@ The frontend adapter uses these types:
   - `GlossSlot`
   - `GlossLattice`
   - `GlossLatticeValidationException`
-- `appTesting/lib/adapters/gloss_lattice_builder.dart`
+- `frontend/lib/adapters/gloss_lattice_builder.dart`
   - `CalibratedGlossCandidateInput`
   - `GlossSlotInput`
   - `GlossLatticeBuilder`
-- `appTesting/lib/services/gloss_lattice_websocket_client.dart`
+- `frontend/lib/services/gloss_lattice_websocket_client.dart`
   - `GlossLatticeTextChannel`
   - `WebSocketGlossLatticeTextChannel`
   - `GlossLatticeWebSocketClient`
@@ -271,7 +271,7 @@ from inventing its own backend format.
 
 ## Verification source
 
-`appTesting/test/fixtures/gloss_lattice_v1.json` is an exact copy of the authoritative backend
+`frontend/test/fixtures/gloss_lattice_v1.json` is an exact copy of the authoritative backend
 fixture `front_back_contract:tests/fixtures/gloss_lattice_v1.json`. It deliberately contains all
 four provenance cases. Contract tests should parse this same content, verify exact snake_case JSON,
 and prove that frontend serialization stays compatible with backend validation.

@@ -1,0 +1,29 @@
+name: permission_handler_apple_example
+description: Demonstrates how to use the permission_handler_apple plugin.
+
+environment:
+  sdk: ^3.7.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  baseflow_plugin_template: ^2.1.1
+  permission_handler_apple: ^9.4.9
+  permission_handler_platform_interface: ^4.3.2
+  flutter:
+    sdk: flutter
+
+resolution: workspace
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  url_launcher: ^6.3.2
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - res/images/baseflow_logo_def_light-02.png
+    - res/images/poweredByBaseflowLogoLight@3x.png

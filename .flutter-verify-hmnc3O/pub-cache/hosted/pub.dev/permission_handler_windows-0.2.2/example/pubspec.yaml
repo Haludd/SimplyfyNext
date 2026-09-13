@@ -1,0 +1,29 @@
+name: permission_handler_windows_example
+description: Demonstrates how to use the permission_handler_windows plugin.
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.24.0"
+resolution: workspace
+
+dependencies:
+  baseflow_plugin_template: ^2.1.1
+  flutter:
+    sdk: flutter
+  permission_handler_windows: ^0.2.2
+  permission_handler_platform_interface: ^4.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  url_launcher: ^6.0.12
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - res/images/baseflow_logo_def_light-02.png
+    - res/images/poweredByBaseflowLogoLight@3x.png
+    - packages/baseflow_plugin_template/logo.png
+    - packages/baseflow_plugin_template/poweredByBaseflow.png

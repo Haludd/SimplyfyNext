@@ -21,6 +21,141 @@ async function bubble(page, text) {
   await expect(page.locator(".bubble", { hasText: text })).toHaveCount(1);
 }
 
+async function showRoomWithoutConnecting(page) {
+  await page.evaluate(() => {
+    document.querySelector("#lobby").hidden = true;
+    document.querySelector("#room").hidden = false;
+  });
+}
+
+async function layoutSnapshot(page) {
+  return page.evaluate(() => {
+    const isRendered = (element) => {
+      const style = getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        bounds.width > 0 &&
+        bounds.height > 0
+      );
+    };
+    const bounds = (selector) => {
+      const rect = document.querySelector(selector).getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const tooSmallTouchTargets = [...document.querySelectorAll("button, summary")]
+      .filter(isRendered)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          name: element.id || element.textContent.trim().replace(/\s+/g, " "),
+          width: rect.width,
+          height: rect.height,
+        };
+      })
+      .filter(({ width, height }) => width < 43.5 || height < 43.5);
+    const undersizedFormText = [
+      ...document.querySelectorAll(
+        'input:not([type="radio"]):not([type="checkbox"]):not([type="file"]), textarea, select',
+      ),
+    ]
+      .filter(isRendered)
+      .map((element) => ({
+        name: element.id,
+        fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+      }))
+      .filter(({ fontSize }) => fontSize < 16);
+
+    return {
+      horizontalOverflow:
+        document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      entryCard: bounds(".entry-card"),
+      roomLayout: bounds(".room-layout"),
+      chat: bounds(".chat"),
+      roomDisplay: getComputedStyle(document.querySelector(".room-layout")).display,
+      tooSmallTouchTargets,
+      undersizedFormText,
+    };
+  });
+}
+
+function expectInsideViewport(box, viewportWidth) {
+  expect(box.left).toBeGreaterThanOrEqual(-0.5);
+  expect(box.right).toBeLessThanOrEqual(viewportWidth + 0.5);
+}
+
+const responsiveViewports = [
+  { name: "small phone portrait", width: 320, height: 568, touch: true },
+  { name: "phone portrait", width: 390, height: 844, touch: true },
+  { name: "large phone portrait", width: 412, height: 915, touch: true },
+  { name: "phone landscape", width: 844, height: 390, touch: true },
+  { name: "tablet portrait", width: 768, height: 1024, touch: true },
+  { name: "compact laptop", width: 1024, height: 768, touch: false },
+  { name: "laptop", width: 1440, height: 900, touch: false },
+];
+
+test("conversation layout is responsive from small phones to laptops", async ({
+  page,
+}) => {
+  for (const viewport of responsiveViewports) {
+    await test.step(viewport.name, async () => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/conversation");
+      await expect(page.locator("#lobby")).toBeVisible();
+
+      let snapshot = await layoutSnapshot(page);
+      expect(snapshot.horizontalOverflow).toBeLessThanOrEqual(1);
+      expectInsideViewport(snapshot.entryCard, viewport.width);
+
+      await showRoomWithoutConnecting(page);
+      snapshot = await layoutSnapshot(page);
+      expect(snapshot.horizontalOverflow).toBeLessThanOrEqual(1);
+      expectInsideViewport(snapshot.roomLayout, viewport.width);
+      expectInsideViewport(snapshot.chat, viewport.width);
+
+      if (viewport.width <= 720) {
+        expect(snapshot.roomDisplay).toBe("flex");
+      } else {
+        expect(snapshot.roomDisplay).toBe("grid");
+      }
+      if (viewport.touch) {
+        expect(snapshot.tooSmallTouchTargets).toEqual([]);
+        expect(snapshot.undersizedFormText).toEqual([]);
+      }
+    });
+  }
+});
+
+test("phone composer remains reachable when the virtual keyboard reduces height", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/conversation");
+  await showRoomWithoutConnecting(page);
+
+  await page.setViewportSize({ width: 390, height: 500 });
+  const draft = page.locator("#draft");
+  await draft.focus();
+  await draft.scrollIntoViewIfNeeded();
+  const bounds = await draft.boundingBox();
+
+  expect(bounds).not.toBeNull();
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(501);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+});
+
 test("QR, two-device chat, JSON upload, repair, refresh and end", async ({
   page,
   browser,

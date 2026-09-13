@@ -33,7 +33,8 @@ class _ConversationAddressDialog extends StatefulWidget {
       _ConversationAddressDialogState();
 }
 
-class _ConversationAddressDialogState extends State<_ConversationAddressDialog> {
+class _ConversationAddressDialogState
+    extends State<_ConversationAddressDialog> {
   static const _configured = String.fromEnvironment('CONVERSATION_URL');
   final _input = TextEditingController(
     text: _configured.isNotEmpty
@@ -68,6 +69,7 @@ class _ConversationAddressDialogState extends State<_ConversationAddressDialog> 
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
     title: const Text('Open shared conversation'),
     content: Column(
       mainAxisSize: MainAxisSize.min,

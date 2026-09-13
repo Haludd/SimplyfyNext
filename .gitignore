@@ -55,3 +55,4 @@ desktop.ini
 /frontend/conversation-tests/test-results/
 /frontend/conversation-tests/playwright-report/
 /test-results/
+/.flutter-verify-*/

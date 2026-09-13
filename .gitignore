@@ -50,3 +50,8 @@ data/interim/
 Thumbs.db
 desktop.ini
 :memory:.ses
+
+/frontend/conversation-tests/node_modules/
+/frontend/conversation-tests/test-results/
+/frontend/conversation-tests/playwright-report/
+/test-results/

@@ -276,3 +276,10 @@ SimplyNext/
 - `plan/DEP_dependencies.md` — dependency policy.
 - `../plan/PLN_plan.md` — implementation status.
 - `../plan/BPP_backend_production_plan.md` — local ignored production workbook; never commit its values.
+
+## Words-only conversation service
+
+The two-device feature uses a separate entry point, `simplynext.conversation.app:app`, and the
+`conversation` install extra. It does not require the legacy GlossLattice backend to be ready.
+See [the conversation guide](../docs/TWO_WAY_CONVERSATION.md) for startup, the browser UI, and the
+words/confidence JSON contract. Use one process/worker; this MVP stores room history in memory.

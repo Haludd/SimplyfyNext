@@ -1,5 +1,11 @@
 **SIMPLYNEXT GLOSSLATTICE V1 CONTRACT**
 
+> **Conversation feature (2026-09-13):** The new two-device feature uses the independent
+> `simplynext.conversation.app` service and words/confidence JSON. Its executable contracts,
+> browser UI, implementation status, and remaining work are documented in
+> [TWO_WAY_CONVERSATION.md](../docs/TWO_WAY_CONVERSATION.md). The GlossLattice descriptions
+> below apply to the earlier service, not the new room endpoints.
+
 > **Integration layout:** Backend paths in this document are relative to
 > `backend/`. For example, `tests/fixtures/` means
 > `backend/tests/fixtures/` from the repository root.

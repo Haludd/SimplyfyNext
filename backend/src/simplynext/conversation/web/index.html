@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#153d35" />
+    <title>SignBridge · Conversation</title>
+    <link rel="stylesheet" href="/conversation-assets/style.css" />
+    <script defer src="/conversation-assets/vendor/qrcode.js"></script>
+    <script defer src="/conversation-assets/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/conversation" aria-label="SignBridge home"
+        ><span class="brand-icon" aria-hidden="true">S</span>SignBridge<span
+          class="brand-dot"
+          >.</span
+        ></a
+      >
+      <span class="top-caption">A little closer. A lot more understood.</span>
+      <span id="connection" class="badge">Ready to connect</span>
+    </header>
+    <div id="notice" class="notice" role="alert" hidden></div>
+    <main>
+      <section id="lobby" class="lobby">
+        <div class="intro">
+          <span class="eyebrow"
+            ><span class="dot"></span> MADE FOR FACE-TO-FACE MOMENTS</span
+          >
+          <h1>A conversation.<br />Two ways to<br /><em>connect.</em></h1>
+          <p>
+            Sign, speak, or type. Meet in one shared conversation, each on your
+            own screen.
+          </p>
+          <div
+            class="conversation-illustration"
+            aria-label="Example conversation"
+          >
+            <div class="example-bubble example-sign">
+              <span>SIGNED MESSAGE</span>Could you help me find my way?
+            </div>
+            <div class="example-bubble example-speech">
+              <span>SPOKEN REPLY</span>Of course. Where are you heading?
+            </div>
+          </div>
+          <p class="small intro-foot">
+            Two people. No account. Room history clears when the conversation
+            ends.
+          </p>
+        </div>
+        <div class="entry-card">
+          <span class="eyebrow">LET’S GET TALKING</span>
+          <h2>Your side of the conversation</h2>
+          <label for="name">What should we call you?</label>
+          <input
+            id="name"
+            maxlength="40"
+            autocomplete="given-name"
+            placeholder="Your name"
+            value=""
+          />
+          <fieldset class="mode-choice">
+            <legend>I’d like to start with</legend>
+            <label
+              ><input type="radio" name="mode" value="sign" checked /><span
+                ><b>Signing</b><small>Camera & text</small></span
+              ></label
+            >
+            <label
+              ><input type="radio" name="mode" value="speech" /><span
+                ><b>Speaking</b><small>Microphone & text</small></span
+              ></label
+            >
+          </fieldset>
+          <button id="create" class="primary wide">
+            Start a conversation <span aria-hidden="true">↗</span>
+          </button>
+          <p class="small centered">
+            You’ll get a QR code to show the other person.
+          </p>
+          <div class="divider"><span>or join someone</span></div>
+          <form id="join-form">
+            <label for="room-code">Their room code</label>
+            <div class="join-row">
+              <input
+                id="room-code"
+                maxlength="6"
+                autocapitalize="characters"
+                autocomplete="off"
+                placeholder="ABC234"
+                pattern="[A-Za-z2-9]{6}"
+                required
+              /><button id="join" class="secondary" type="submit">
+                Join room
+              </button>
+            </div>
+          </form>
+          <p class="small">
+            You can switch between signing, speaking, and typing at any time.
+          </p>
+        </div>
+      </section>
+
+      <section id="room" hidden>
+        <div class="room-heading">
+          <div>
+            <span class="eyebrow">YOUR SHARED SPACE</span>
+            <h1>In conversation<span class="brand-dot">.</span></h1>
+            <p id="partner-status">Waiting for the other person to join…</p>
+          </div>
+          <button id="end" class="quiet danger">End conversation</button>
+        </div>
+        <div class="room-layout">
+          <aside class="sidebar">
+            <details id="invite" class="panel" open>
+              <summary>
+                Invite the other person
+                <span id="code-label" class="code"></span>
+              </summary>
+              <p class="small">
+                Let them scan this QR code with their phone camera, or enter the
+                room code.
+              </p>
+              <div
+                id="qr"
+                class="qr"
+                role="img"
+                aria-label="QR code to join this conversation"
+              ></div>
+              <button id="copy" class="secondary wide">
+                Copy invitation link
+              </button>
+              <p id="invite-expiry" class="small centered">
+                Invitation valid for 10 minutes · 2 people maximum
+              </p>
+            </details>
+            <section class="panel input-panel">
+              <h2>Your input</h2>
+              <div class="tabs" role="group" aria-label="Input method">
+                <button id="sign-tab" aria-pressed="true">Sign</button
+                ><button id="speech-tab" aria-pressed="false">Speak</button>
+              </div>
+              <div id="sign-input">
+                <div class="camera-box">
+                  <video id="camera" autoplay muted playsinline hidden></video>
+                  <div id="camera-placeholder">
+                    <span class="camera-symbol" aria-hidden="true">⌁</span
+                    ><b>Your signing space</b
+                    ><span>Open your camera when you’re ready.</span>
+                  </div>
+                </div>
+                <button id="camera-toggle" class="secondary wide">
+                  Open camera preview
+                </button>
+                <p class="small">
+                  Preview only until your classifier is connected. Camera video
+                  stays on this device.
+                </p>
+                <div id="translation-mode" class="mode-note">
+                  Checking translation connection…
+                </div>
+                <details class="integration">
+                  <summary>Test signing input</summary>
+                  <p class="small">
+                    Try sample words, or load your classifier’s words +
+                    confidence JSON file.
+                  </p>
+                  <div class="stack">
+                    <button id="sample" class="secondary">
+                      Try sample: HELLO</button
+                    ><button id="uncertain" class="quiet">
+                      Try an unclear sign
+                    </button>
+                  </div>
+                  <label class="file-label" for="words-file"
+                    >Load words JSON<input
+                      id="words-file"
+                      type="file"
+                      accept="application/json,.json"
+                  /></label>
+                  <label for="words-json">Or paste words JSON</label>
+                  <textarea
+                    id="words-json"
+                    rows="4"
+                    spellcheck="false"
+                    placeholder='{"words":[{"word":"HELLO","confidence":0.96}]}'
+                  ></textarea>
+                  <button id="send-words" class="secondary wide">
+                    Send words
+                  </button>
+                </details>
+              </div>
+              <div id="speech-input" hidden>
+                <div class="speech-art" aria-hidden="true">▂ ▆ █ ▄ ▂ ▇ ▃</div>
+                <h3>Speak in your own words.</h3>
+                <p class="small">
+                  Your words appear in the message box. Review them, then send.
+                </p>
+                <label for="speech-language">Spoken language</label>
+                <select id="speech-language">
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="id-ID">Bahasa Indonesia</option>
+                  <option value="ms-MY">Bahasa Melayu</option>
+                </select>
+                <button id="microphone" class="primary wide">
+                  Start microphone
+                </button>
+                <p id="speech-status" class="small" role="status">
+                  Microphone access is requested when you start.
+                </p>
+                <p class="small">
+                  Speech recognition may use your browser’s online service. You
+                  can always type instead.
+                </p>
+              </div>
+            </section>
+          </aside>
+          <section class="chat panel" aria-label="Shared conversation">
+            <div class="chat-top">
+              <div>
+                <span class="dot"></span>
+                <b id="chat-title">You & your conversation partner</b>
+              </div>
+              <label class="playback"
+                ><input type="checkbox" id="auto-speak" /> Read incoming signs
+                aloud</label
+              >
+            </div>
+            <div
+              id="messages"
+              class="messages"
+              role="log"
+              aria-label="Messages"
+              aria-live="polite"
+              aria-relevant="additions text"
+            >
+              <div class="empty">
+                <span aria-hidden="true">↔</span>
+                <h2>Understanding starts here.</h2>
+                <p>Say hello. Your messages will appear on both screens.</p>
+              </div>
+            </div>
+            <div id="outbox" class="outbox" aria-live="polite"></div>
+            <div id="activity" class="activity" role="status"></div>
+            <div class="composer-tools">
+              <button id="quick-speech" class="quiet">Speak a message</button
+              ><button id="quick-sign" class="quiet">Open signing input</button>
+            </div>
+            <form id="compose" class="composer">
+              <label class="sr-only" for="draft">Message</label>
+              <textarea
+                id="draft"
+                rows="2"
+                maxlength="2000"
+                placeholder="Type a message, or use your microphone…"
+              ></textarea>
+              <button id="send" class="primary" type="submit">
+                Send <span aria-hidden="true">↑</span>
+              </button>
+            </form>
+            <p class="composer-hint">
+              Your message is shared when you press Send. Shift + Enter adds a
+              new line.
+            </p>
+          </section>
+        </div>
+      </section>
+      <section id="ended" class="ended panel" hidden>
+        <span class="eyebrow">UNTIL NEXT TIME</span>
+        <h1>Conversation ended.</h1>
+        <p id="ended-reason">This room is now closed.</p>
+        <button id="restart" class="primary">Start another conversation</button>
+      </section>
+    </main>
+    <footer>
+      <span>SignBridge</span
+      ><span>Different ways to express. One place to connect.</span>
+    </footer>
+  </body>
+</html>

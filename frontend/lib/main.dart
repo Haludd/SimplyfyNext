@@ -18,6 +18,7 @@ import 'services/sign_analysis_service.dart';
 import 'services/state_normalised_tracking_service.dart';
 import 'services/tracking_service.dart';
 import 'services/web_tracking_service.dart';
+import 'ui/conversation_launch.dart';
 import 'ui/web_camera_preview.dart';
 
 const _background = Color(0xFF07111F);
@@ -1482,6 +1483,8 @@ class LiveTranslatorScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          const ConversationLaunchCard(),
+          const SizedBox(height: 12),
           GlassCard(
             padding: const EdgeInsets.all(12),
             child: Column(

@@ -1,0 +1,11 @@
+{
+  "name": "signbridge-conversation-tests",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "jsqr": "1.4.0"
+  }
+}

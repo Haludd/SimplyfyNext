@@ -1,5 +1,11 @@
 **SIMPLYNEXT BACKEND DEPENDENCIES**
 
+> **Conversation feature (2026-09-13):** The optional `conversation` extra includes
+> `websockets>=14,<17` for the room service. The browser UI ships qrcode-generator 2.0.4
+> (MIT) locally, with attribution under `backend/src/simplynext/conversation/web/vendor/`.
+> Playwright and jsQR are development-only browser-test tools declared in
+> `frontend/conversation-tests/package.json`.
+
 > **Integration layout:** Backend paths and commands in this document are
 > relative to `backend/` unless an absolute repository path is shown.
 

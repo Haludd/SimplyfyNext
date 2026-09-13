@@ -1,10 +1,10 @@
 import {
-  beginAslCapture,
-  finishAslCapture,
+  beginAslSignCapture,
+  finishAslSignCapture,
   ingestAslFrame,
   prepareAslRecognizer,
-  resetAslCapture,
-} from './asl_recognizer.js?v=20250911-model-aligned-adaptation';
+  resetAslSignCapture,
+} from './asl_recognizer.js?v=20260913-asl-250-sign';
 
 // The bundled ASL model was trained with MediaPipe Holistic, not independent
 // Hand/Pose/Face Task models. The legacy browser Holistic solution emits the
@@ -30,8 +30,8 @@ const POSE_LANDMARKS = [
 ];
 
 // Face Mesh indices for the upper-face and mouth regions. The remaining face
-// mesh points stay inside MediaPipe and are deliberately not sent to the
-// classifier.
+// mesh points stay inside the browser for the ASL model; only these curated
+// points cross into Flutter and the optional backend contract.
 const FACE_UPPER_LANDMARKS = [
   [33, 'left_eye_outer'],
   [133, 'left_eye_inner'],
@@ -57,6 +57,11 @@ const FACE_UPPER_LANDMARKS = [
   [334, 'right_brow_center'],
   [293, 'right_brow_upper'],
   [300, 'right_brow_lower'],
+  // Required by the backend's 16-point face layout.
+  [1, 'nose_tip'],
+  [152, 'chin'],
+  [145, 'left_eye_bottom'],
+  [374, 'right_eye_bottom'],
 ];
 
 const FACE_MOUTH_LANDMARKS = [
@@ -79,9 +84,9 @@ const FACE_MOUTH_LANDMARKS = [
 const DEEPFACE_API_URL = '';
 const DEEPFACE_INTERVAL_MS = 1200;
 const queryTrackingFps = Number(
-  new URLSearchParams(globalThis.location.search).get('tracking_fps'),
+  new URLSearchParams(globalThis.location.search).get('tracking_fps') || 30,
 );
-const TRACKING_FPS = Number.isFinite(queryTrackingFps)
+const TRACKING_FPS = Number.isFinite(queryTrackingFps) && queryTrackingFps > 0
   ? Math.min(60, Math.max(18, queryTrackingFps))
   : 30;
 const DETECTION_INTERVAL_MS = 1000 / TRACKING_FPS;
@@ -133,6 +138,7 @@ let pointQualityWidth = 0;
 let pointQualityHeight = 0;
 let lastPointQualityAt = 0;
 let lastProcessedAt = 0;
+let lastProcessedVideoTime = -1;
 let lastFlutterFrameAt = 0;
 let detectionInProgress = false;
 let trackingFrameErrorShown = false;
@@ -1023,6 +1029,14 @@ function dispatchFrame(
 
   const frame = {
     timestamp_ms: timestampMs,
+    camera: {
+      source_width: video.videoWidth,
+      source_height: video.videoHeight,
+      rotation_degrees: 0,
+      // Only the preview is mirrored with CSS. Detector pixels stay native.
+      mirrored_input: false,
+      coordinates_canonical: true,
+    },
     // This score is the mean confidence of every point in the active worlds.
     // Missing points count as zero against that world's expected budget.
     processing_confidence: overallPointConfidence,
@@ -1034,7 +1048,7 @@ function dispatchFrame(
     landmark_worlds: landmarkWorlds,
     subject_tracking: subjectTracking,
   };
-  // The Google ASL model needs the complete 543-point landmark tensor. Keep
+  // The 250-sign ASL model needs the complete 543-point landmark tensor. Keep
   // that tensor inside this browser module only; the ordinary Flutter event
   // below remains the intentionally curated tracking contract.
   ingestAslFrame({
@@ -1047,7 +1061,7 @@ function dispatchFrame(
   });
   // Keep the local recognizer fed from every detector result, but cap the
   // expensive JS-to-Dart JSON handoff. Eighteen visual frames per second is
-  // smooth in the overlay and frees time for MediaPipe and ONNX inference.
+  // smooth in the overlay and frees time for MediaPipe and TFLite inference.
   if (timestampMs - lastFlutterFrameAt >= FLUTTER_EVENT_INTERVAL_MS) {
     lastFlutterFrameAt = timestampMs;
     window.dispatchEvent(
@@ -1125,8 +1139,10 @@ function processFrame() {
     syncVisibleCameraElement();
     if (video?.readyState >= 2 && holistic && !detectionInProgress) {
       const now = performance.now();
-      if (now - lastProcessedAt >= DETECTION_INTERVAL_MS) {
+      if (now - lastProcessedAt >= DETECTION_INTERVAL_MS &&
+          video.currentTime !== lastProcessedVideoTime) {
         lastProcessedAt = now;
+        lastProcessedVideoTime = video.currentTime;
         detectionInProgress = true;
         void processHolisticFrame();
       }
@@ -1223,6 +1239,7 @@ async function start() {
   started = true;
   trackingFrameErrorShown = false;
   lastProcessedAt = 0;
+  lastProcessedVideoTime = -1;
   lastFlutterFrameAt = 0;
   lastPointQualityAt = 0;
   detectionInProgress = false;
@@ -1234,7 +1251,7 @@ async function start() {
   subjectReferenceIdentity = null;
   fingerQualityHistory = {left: {}, right: {}, unknown: {}};
   void prepareAslRecognizer().catch(() => {
-    // A missing locally-exported model must not stop ordinary landmark
+    // A missing locally-installed model must not stop ordinary landmark
     // tracking. Flutter will surface the model-unavailable result at the end
     // of a captured sign instead.
   });
@@ -1264,7 +1281,7 @@ async function stop() {
   subjectAcquire = null;
   subjectReferenceIdentity = null;
   fingerQualityHistory = {left: {}, right: {}, unknown: {}};
-  resetAslCapture();
+  resetAslSignCapture();
 }
 
 globalThis.addEventListener('pagehide', () => {
@@ -1274,6 +1291,9 @@ globalThis.addEventListener('pagehide', () => {
 window.signBridgeHandTracker = {
   start,
   stop,
-  beginAslCapture,
-  finishAslCapture,
+  beginAslSignCapture,
+  finishAslSignCapture,
+  // Compatibility aliases for pages that called the earlier capture names.
+  beginAslCapture: beginAslSignCapture,
+  finishAslCapture: finishAslSignCapture,
 };

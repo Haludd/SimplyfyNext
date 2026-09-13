@@ -7,7 +7,7 @@ void main() {
       'status': 'recognized',
       'word': 'hello',
       'confidence': .8125,
-      'model_version': 'google_asl_25_v20250723_042752',
+      'model_version': 'jamesbustos_asl_250_809d456',
       'frame_count': 28,
       'started_at_ms': 1000,
       'ended_at_ms': 1933,
@@ -32,7 +32,7 @@ void main() {
     final result = AslRecognitionResult.fromJson(<String, dynamic>{
       'status': 'unknown',
       'confidence': .42,
-      'model_version': 'google_asl_25_v20250723_042752',
+      'model_version': 'jamesbustos_asl_250_809d456',
       'frame_count': 16,
       'reason': 'low_confidence',
     });

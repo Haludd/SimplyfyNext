@@ -33,7 +33,7 @@ void main() {
         status: 'recognized',
         word: 'hello',
         confidence: .81,
-        modelVersion: 'google_asl_25_v20250723_042752',
+        modelVersion: 'jamesbustos_asl_250_809d456',
         frameCount: 16,
         alternatives: <AslRecognitionCandidate>[
           AslRecognitionCandidate(word: 'hello', confidence: .81, rank: 1),
@@ -48,8 +48,8 @@ void main() {
     expect(sent?['word'], 'hello');
     expect(sent?['language'], 'ASL');
     expect(sent?['source'], <String, String>{
-      'classifier_id': 'google_asl_25',
-      'model_version': 'google_asl_25_v20250723_042752',
+      'classifier_id': 'jamesbustos_asl_250',
+      'model_version': 'jamesbustos_asl_250_809d456',
       'execution': 'browser_local',
     });
     expect(sent, isNot(contains('frames')));
@@ -73,7 +73,7 @@ void main() {
           status: 'recognized',
           word: 'hello',
           confidence: .81,
-          modelVersion: 'google_asl_25_v20250723_042752',
+          modelVersion: 'jamesbustos_asl_250_809d456',
           frameCount: 16,
         ),
         startedAt: DateTime.utc(2026, 9, 10),

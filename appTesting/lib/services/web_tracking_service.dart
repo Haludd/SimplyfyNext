@@ -93,7 +93,7 @@ class WebTrackingService implements TrackingService {
     final frames = List<LandmarkFrame>.unmodifiable(_utteranceFrames);
     _utteranceFrames.clear();
     _capturingUtterance = false;
-    _status = 'MediaPipe four-world tracking · next utterance';
+    _status = 'MediaPipe four-world tracking · next sign';
     return frames;
   }
 

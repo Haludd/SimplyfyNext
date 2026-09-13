@@ -223,6 +223,66 @@ void main() {
     expect(detector.update(pausedLongEnough), isTrue);
   });
 
+  test(
+    'slow motion below the per-frame activity threshold still completes',
+    () {
+      final detector = UtteranceStillnessDetector();
+      final started = DateTime.utc(2026, 9, 11);
+      for (var i = 0; i < 15; i++) {
+        expect(
+          detector.update(
+            _handFrame(
+              timestamp: started.add(Duration(milliseconds: i * 34)),
+              xOffset: i * .004,
+            ),
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        detector.update(
+          _handFrame(
+            timestamp: started.add(const Duration(milliseconds: 1300)),
+            xOffset: .056,
+          ),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('stationary hands with bounded jitter never count as a sign', () {
+    final detector = UtteranceStillnessDetector();
+    final started = DateTime.utc(2026, 9, 11);
+    for (var i = 0; i < 100; i++) {
+      expect(
+        detector.update(
+          _handFrame(
+            timestamp: started.add(Duration(milliseconds: i * 34)),
+            xOffset: i.isEven ? .004 : -.004,
+          ),
+        ),
+        isFalse,
+      );
+    }
+  });
+
+  test('continuous slow movement is not mistaken for a pause', () {
+    final detector = UtteranceStillnessDetector();
+    final started = DateTime.utc(2026, 9, 11);
+    for (var i = 0; i < 70; i++) {
+      expect(
+        detector.update(
+          _handFrame(
+            timestamp: started.add(Duration(milliseconds: i * 34)),
+            xOffset: i * .003,
+          ),
+        ),
+        isFalse,
+      );
+    }
+  });
+
   test('finishes despite ordinary live-tracker jitter after a sign', () {
     final detector = UtteranceStillnessDetector(
       minimumCaptureDuration: const Duration(milliseconds: 0),

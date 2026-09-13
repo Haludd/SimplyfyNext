@@ -3,14 +3,14 @@ import 'dart:math' as math;
 import '../models/hand_tracking_models.dart';
 import '../models/tracking_models.dart';
 
-/// Detects a likely end-of-utterance pause from consecutive hand coordinates.
+/// Detects a likely end-of-sign pause from consecutive hand coordinates.
 ///
 /// This is only a boundary detector. It does not add motion, velocity, or
 /// acceleration to [LandmarkFrame]. A real pause can be part of a sign, so the
 /// detector requires visible tracking, a previously observed movement, and a
-/// sustained pause before it finishes anything.
-class UtteranceStillnessDetector {
-  UtteranceStillnessDetector({
+/// sustained pause before it finishes a single sign.
+class SignBoundaryDetector {
+  SignBoundaryDetector({
     this.stillnessThreshold = 0.014,
     this.activityThreshold = 0.022,
     this.pauseDuration = const Duration(milliseconds: 650),
@@ -32,6 +32,8 @@ class UtteranceStillnessDetector {
   final Duration minimumCaptureDuration;
 
   LandmarkFrame? _previousFrame;
+  LandmarkFrame? _activityAnchor;
+  LandmarkFrame? _stillAnchor;
   DateTime? _captureStartedAt;
   DateTime? _stillSince;
   bool _activityObserved = false;
@@ -52,10 +54,14 @@ class UtteranceStillnessDetector {
             frame.timestamp.difference(stillSince) >= pauseDuration;
       }
       _stillSince = null;
+      _activityAnchor = null;
+      _stillAnchor = null;
+      _captureStartedAt = null;
       return false;
     }
 
     _captureStartedAt ??= frame.timestamp;
+    _activityAnchor ??= frame;
     final previous = _previousFrame;
     _previousFrame = frame;
     if (previous == null) return false;
@@ -66,18 +72,39 @@ class UtteranceStillnessDetector {
       return false;
     }
 
-    if (displacement >= activityThreshold) {
+    // A slow sign can move less than the threshold in every individual frame.
+    // Measure onset from the initial pose as well, so FPS does not determine
+    // whether a deliberate movement ever counts as a sign.
+    final onsetDisplacement = _averageHandDisplacement(_activityAnchor!, frame);
+    if (onsetDisplacement == null) _activityAnchor = frame;
+    if (displacement >= activityThreshold ||
+        (!_activityObserved && (onsetDisplacement ?? 0) >= activityThreshold)) {
       _activityObserved = true;
       _stillSince = null;
+      _stillAnchor = null;
       return false;
     }
 
     if (displacement > stillnessThreshold) {
       _stillSince = null;
+      _stillAnchor = null;
+      return false;
+    }
+
+    // Small steps in the same direction are still movement. A pause requires
+    // the hand to stay near one pose, not just move slowly between frames.
+    final pauseDisplacement = _stillAnchor == null
+        ? 0.0
+        : _averageHandDisplacement(_stillAnchor!, frame);
+    if (pauseDisplacement == null ||
+        pauseDisplacement >= activityThreshold * 1.5) {
+      _stillSince = null;
+      _stillAnchor = frame;
       return false;
     }
 
     _stillSince ??= frame.timestamp;
+    _stillAnchor ??= frame;
     final startedAt = _captureStartedAt;
     final stillSince = _stillSince;
     if (startedAt == null || stillSince == null || !_activityObserved) {
@@ -92,6 +119,8 @@ class UtteranceStillnessDetector {
 
   void reset() {
     _previousFrame = null;
+    _activityAnchor = null;
+    _stillAnchor = null;
     _captureStartedAt = null;
     _stillSince = null;
     _activityObserved = false;
@@ -140,3 +169,7 @@ class UtteranceStillnessDetector {
     for (final hand in frame.hands) hand.handedness: hand.landmarks,
   };
 }
+
+/// Backward-compatible name for callers of the original capture API.
+@Deprecated('Use SignBoundaryDetector')
+typedef UtteranceStillnessDetector = SignBoundaryDetector;

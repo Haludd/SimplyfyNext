@@ -56,7 +56,7 @@ void main() {
         <String, dynamic>{'word': 'hello', 'confidence': .81},
         <String, dynamic>{'word': 'please', 'confidence': .12},
       ],
-      modelVersion: 'google_asl_25_v20250723_042752',
+      modelVersion: 'jamesbustos_asl_250_809d456',
     );
     controller.backendStatus = 'Word sent to backend · accepted';
 

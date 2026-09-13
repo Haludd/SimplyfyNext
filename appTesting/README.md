@@ -16,8 +16,9 @@ future work, but they are not part of the current single-page UI.
 Install Flutter, then from this directory run:
 
 ```bash
+python3 tool/setup_asl_model.py
 flutter pub get
-flutter run
+flutter run -d chrome
 ```
 
 The project includes generated Android, iOS, and web platform scaffolding. Verify the setup with `flutter analyze`, `flutter test`, or `flutter run`.
@@ -59,7 +60,11 @@ Every emitted landmark's `visibility` is also used as a point-confidence estimat
 
 The overlay is a 3D-style skeleton projection. It is not pretending that a webcam can recover precise metric depth: `z` is relative depth from the hand model, projected onto the 2D camera view. This is the same compact representation that can be used by a later sequence classifier. Native Apple builds can use Vision's `VNDetectHumanHandPoseRequest` behind the same `TrackingService` interface.
 
-The current local analyzer intentionally reports a useful feature readout (`open hand`, `closed hand`, movement, confidence) instead of claiming that four dictionary entries are a complete ASL translator. The seed lexicon is in `assets/sign_lexicon.json`. It stores the ASL labels and Handspeak reference links for `hello`, `help`, `water`, and `please`, plus the sign parameters to compare: handshape, movement, location, and handedness. Add a licensed dataset and a trained temporal model before presenting a word-level result as reliable.
+The ASL browser path now runs the requested James Bustos 250-sign TensorFlow Lite model locally.
+Setup, vocabulary, input coordinates, and validation are documented in
+[`LAR`](LOCAL_ASL_RECOGNITION.md). The model and browser runtime must be installed with
+`python3 tool/setup_asl_model.py` before running or building a fresh clone. The old 25-word ONNX
+model has been removed. Other language profiles retain the existing tracking flow.
 
 Chrome also supports an optional facial-expression signal. The Flutter web
 camera remains in the browser for hand and shoulder tracking. About once per

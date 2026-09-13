@@ -12,7 +12,7 @@
 | :---------------------- | :-------------------------------------------- |
 | **Code**                | `RDM`                                         |
 | **Status**              | Live                                          |
-| **Last reviewed**       | 2026-08-30                                    |
+| **Last reviewed**       | 2026-09-13                                    |
 | **Source of truth for** | Onboarding, environment setup, project status |
 | **Related**             | [`RIX`](ref_index.md) · [`CLD`](CLAUDE.md)    |
 
@@ -423,8 +423,9 @@ D3_p39       doc/[D3]_..., slide 39
     🟢 Synthesised — [`TRN`](doc/TRN_training_synthesis.md)
 7.  **Master plan (`PLN`)**
     🔴 Not written — blocked on the architecture decisions
-8.  **Implementation (`src/`)**
-    🔴 Not started
+8.  **Frontend implementation (`appTesting/`)**
+    🟢 Browser-local 250-sign ASL model integrated and tested on 2026-09-13. Setup and validation:
+    [`LAR_S1`](appTesting/LOCAL_ASL_RECOGNITION.md#1-run). Live signer accuracy remains unmeasured.
 9.  **Dataset**
     🔴 Not collected. The largest open question
 10. **AWS lease**

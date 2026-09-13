@@ -17,6 +17,18 @@ abstract class TrackingService {
   Future<List<LandmarkFrame>> finishUtterance();
   void ingest(LandmarkFrame frame);
   void dispose();
+
+}
+
+// Sign-by-sign aliases. These are extensions so existing TrackingService
+// implementations that still satisfy the backend's utterance contract do not
+// need to duplicate forwarding methods.
+extension SignTrackingService on TrackingService {
+  List<LandmarkFrame> get signFrames => utteranceFrames;
+  int get signFrameCount => utteranceFrameCount;
+  bool get isCapturingSign => isCapturingUtterance;
+  void beginSign() => beginUtterance();
+  Future<List<LandmarkFrame>> finishSign() => finishUtterance();
 }
 
 /// The UI consumes this interface, so MediaPipe Tasks can be connected without
@@ -104,7 +116,7 @@ class DemoTrackingService implements TrackingService {
     final frames = List<LandmarkFrame>.unmodifiable(_utteranceFrames);
     _utteranceFrames.clear();
     _capturingUtterance = false;
-    _status = 'Demo tracking · ready for next utterance';
+    _status = 'Demo tracking · ready for next sign';
     return frames;
   }
 

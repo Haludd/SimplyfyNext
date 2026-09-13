@@ -660,7 +660,7 @@ class _LivePreviewOverlay extends StatelessWidget {
     final ttsText = analysis?.ttsText;
     final caption =
         analysis?.caption ??
-        (controller.isCapturingUtterance
+        (controller.isCapturingSign
             ? 'Listening for a sign...'
             : controller.devices.cameraReady
             ? 'Show your hands to begin'
@@ -687,9 +687,9 @@ class _LivePreviewOverlay extends StatelessWidget {
         ? 'CAMERA OFF'
         : backendProcessing
         ? 'PROCESSING'
-        : backendActive || controller.isCapturingUtterance
-        ? 'CAPTURING'
-        : 'READY · AUTO';
+        : backendActive || controller.isCapturingSign
+        ? 'CAPTURING SIGN'
+        : 'READY · SIGN BY SIGN';
 
     return Stack(
       children: <Widget>[
@@ -1071,7 +1071,7 @@ class _LivePreviewOverlay extends StatelessWidget {
                         if (controller.canTeachLastAslCapture &&
                             analysis.status == 'confident' &&
                             analysis.modelVersion.startsWith(
-                              'google_asl_25_',
+                              'jamesbustos_asl_250_',
                             )) ...<Widget>[
                           const SizedBox(height: 4),
                           TextButton.icon(
@@ -1472,7 +1472,7 @@ class LiveTranslatorScreen extends StatelessWidget {
     return _ScreenFrame(
       eyebrow: 'Live session',
       title: 'Live translator',
-      subtitle: 'Sign naturally. We\'ll take care of the words.',
+      subtitle: 'Sign one word at a time. Each completed sign appears here.',
       action: _StatusPill(
         label: controller.trackingStatus,
         color: controller.trackingStatus.contains('MediaPipe')

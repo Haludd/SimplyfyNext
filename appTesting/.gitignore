@@ -5,6 +5,10 @@
 .flutter-plugins-dependencies
 .metadata
 build/
+web/vendor/tflite/
+!web/vendor/tflite/
+!web/vendor/tflite/**
+node_modules/
 coverage/
 android/.gradle/
 android/local.properties

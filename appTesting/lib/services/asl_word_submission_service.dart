@@ -86,7 +86,7 @@ final class AslWordSubmissionService {
               'word': result.word,
               'confidence': result.confidence,
               'source': <String, String>{
-                'classifier_id': 'google_asl_25',
+                'classifier_id': 'jamesbustos_asl_250',
                 'model_version': result.modelVersion,
                 'execution': 'browser_local',
               },

@@ -3,21 +3,21 @@ import 'dart:js_interop_unsafe';
 
 import '../models/asl_recognition_models.dart';
 
-/// Calls the local JavaScript ONNX adapter. The adapter owns the full 543-point
+/// Calls the local JavaScript TFLite adapter. The adapter owns the full 543-point
 /// MediaPipe input inside the page and returns only a compact recognition
 /// result to Flutter.
 class AslRecognizerBridge {
   bool get isSupported => globalContext['signBridgeAslRecognizer'] != null;
 
-  Future<void> beginCapture() => _invokeVoid('beginCapture');
+  Future<void> beginCapture() => _invokeVoid('beginSignCapture');
 
-  Future<void> reset() => _invokeVoid('reset');
+  Future<void> reset() => _invokeVoid('resetSignCapture');
 
   Future<AslRecognitionResult?> finishCapture() async {
     final recognizer = _recognizer;
     if (recognizer == null) return null;
     final promise = recognizer.callMethodVarArgs<JSPromise<JSAny?>>(
-      'finishCapture'.toJS,
+      'finishSignCapture'.toJS,
       const <JSAny?>[],
     );
     final raw = await promise.toDart;
@@ -45,7 +45,7 @@ class AslRecognizerBridge {
   }
 
   void dispose() {
-    // The page-level ONNX session is deliberately cached across Flutter widget
+    // The page-level TFLite session is deliberately cached across Flutter widget
     // rebuilds. reset() discards only an unfinished signer capture.
   }
 

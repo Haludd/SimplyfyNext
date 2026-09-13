@@ -27,6 +27,7 @@ aws_credentials
 *.pt
 *.pth
 *.h5
+!appTesting/web/models/jamesbustos_asl_250_809d456.tflite
 data/raw/
 data/interim/
 

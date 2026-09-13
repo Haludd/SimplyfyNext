@@ -1,87 +1,91 @@
-// Browser-local inference adapter for the Google ASL 25-word model.
+// Browser-local inference adapter for the James Bustos 250-sign TensorFlow Lite model.
 //
 // The tracker calls `ingestAslFrame()` with MediaPipe's complete landmark
-// arrays for every valid Holistic frame. A source-compatible rolling window
-// remains in this page: only the final word and its confidence are returned
-// to Dart.
+// arrays for every valid Holistic frame. A bounded single-sign window remains
+// in this page: only the final sign and its confidence are returned to Dart.
 //
-// The model is deliberately loaded from the app, while ONNX Runtime is pinned
-// to a CDN just like the existing MediaPipe Tasks runtime. This keeps model
-// execution local to the browser and avoids sending camera frames or landmark
-// sequences to a classifier service.
-const WASM_RUNTIME_URL =
-  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.bundle.min.mjs';
-const WEBGPU_RUNTIME_URL =
-  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.bundle.min.mjs';
+// The model and pinned TensorFlow Lite WASM runtime are served by this app.
+// Camera images and landmark sequences stay in this browser.
+import {createAslModelHandle} from './asl_tflite_runtime.js';
 
 const MODEL_URL = new URL(
-  './models/google_asl_25_v20250723_042752.onnx',
+  './models/jamesbustos_asl_250_809d456.tflite',
   import.meta.url,
 ).toString();
+const MANIFEST_URL = new URL(
+  './models/jamesbustos_asl_250_809d456.manifest.json', import.meta.url,
+).toString();
 
-// The exported upstream model has a fixed input tensor:
-// [batch, 16 frames, 543 landmarks, x/y/z]. Its landmark ordering is
-// FaceMesh(468), Pose(33), left hand(21), then right hand(21).
-const TARGET_FRAMES = 16;
+// The upstream TFLite input is [frames, 543, 3], without a batch axis.
+// Its initial allocation is fixed to 30 frames for the browser runtime.
+// Kaggle/Holistic order: face, LEFT HAND, pose, right hand. Missing = NaN.
+const TARGET_FRAMES = 30;
 const FACE_POINTS = 468;
 const POSE_POINTS = 33;
 const HAND_POINTS = 21;
 const VALUES_PER_POINT = 3;
 const MODEL_LANDMARKS_PER_FRAME =
-  FACE_POINTS + POSE_POINTS + HAND_POINTS + HAND_POINTS;
+  FACE_POINTS + POSE_POINTS + HAND_POINTS * 2;
 const VALUES_PER_FRAME = MODEL_LANDMARKS_PER_FRAME * VALUES_PER_POINT;
-// The upstream Python utility has a dynamic time axis and can predict after
-// five frames. This browser export has a static 16-frame ONNX input, so do
-// not invent a full temporal sequence by repeating five frames: wait for the
-// complete model window, then select it exactly like np.linspace(..., 16).
+// Require a real one-second window, matching the upstream live demo.
 const MIN_MODEL_CAPTURED_FRAMES = TARGET_FRAMES;
 const MIN_TEMPLATE_CAPTURED_FRAMES = 5;
-const MAX_CAPTURED_FRAMES = 30;
-const CAPTURE_SAMPLE_INTERVAL_MS = 0;
+const MAX_CAPTURED_FRAMES = 180;
+const MAX_CAPTURE_DURATION_MS = 6000;
+const MAX_FRAME_GAP_MS = 350;
+const PRE_ROLL_FRAMES = 3;
 const ACTIVE_MOTION_THRESHOLD = 0.003;
 const ACTIVE_LEADING_CONTEXT_FRAMES = 2;
 const ACTIVE_TRAILING_CONTEXT_FRAMES = 4;
-const MIN_CONFIDENCE = 0.6;
-const MIN_CONFIDENCE_MARGIN = 0.08;
-const MODEL_VERSION = 'google_asl_25_v20250723_042752';
+const MIN_CONFIDENCE = 0.7;
+const MODEL_VERSION = 'jamesbustos_asl_250_809d456';
 
-// These are the exact feature indices selected by the checkpoint's
-// PreprocessingLayer. It consumes the 543-slot MediaPipe tensor, but its
-// learned features use these 20 face entries and the two complete hands; pose
-// slots are retained only to preserve the trained tensor's indexing.
+// Exact Gather indices inspected in the shipped TFLite graph: 13 face
+// landmarks and all 75 hand/pose points. Preprocessing is inside the model.
 const MODEL_FACE_FEATURE_POINTS = [
-  33, 133, 362, 263, 61, 291, 199, 419, 17, 84, 17, 314, 405, 320, 307,
-  375, 321, 308, 324, 318,
+  0, 9, 11, 13, 14, 17, 117, 118, 119, 199, 346, 347, 348,
 ];
 const MODEL_FEATURE_POINTS_PER_FRAME =
-  MODEL_FACE_FEATURE_POINTS.length + HAND_POINTS + HAND_POINTS;
+  MODEL_FACE_FEATURE_POINTS.length + POSE_POINTS + HAND_POINTS * 2;
+const TEMPLATE_FEATURE_POINTS = MODEL_FACE_FEATURE_POINTS.length + HAND_POINTS * 2;
+const LEFT_HAND_START = FACE_POINTS;
+const POSE_START = LEFT_HAND_START + HAND_POINTS;
+const RIGHT_HAND_START = POSE_START + POSE_POINTS;
 
+// Exact upstream prediction indices; notably class 0 is uppercase "TV".
 const LABELS = [
-  'hello',
-  'please',
-  'thankyou',
-  'bye',
-  'mom',
-  'dad',
-  'boy',
-  'girl',
-  'man',
-  'child',
-  'drink',
-  'sleep',
-  'go',
-  'happy',
-  'sad',
-  'hungry',
-  'thirsty',
-  'sick',
-  'bad',
-  'red',
-  'blue',
-  'green',
-  'yellow',
-  'black',
-  'white',
+  "TV", "after", "airplane", "all", "alligator", "animal", "another", "any",
+  "apple", "arm", "aunt", "awake", "backyard", "bad", "balloon", "bath",
+  "because", "bed", "bedroom", "bee", "before", "beside", "better", "bird",
+  "black", "blow", "blue", "boat", "book", "boy", "brother", "brown",
+  "bug", "bye", "callonphone", "can", "car", "carrot", "cat", "cereal",
+  "chair", "cheek", "child", "chin", "chocolate", "clean", "close", "closet",
+  "cloud", "clown", "cow", "cowboy", "cry", "cut", "cute", "dad",
+  "dance", "dirty", "dog", "doll", "donkey", "down", "drawer", "drink",
+  "drop", "dry", "dryer", "duck", "ear", "elephant", "empty", "every",
+  "eye", "face", "fall", "farm", "fast", "feet", "find", "fine",
+  "finger", "finish", "fireman", "first", "fish", "flag", "flower", "food",
+  "for", "frenchfries", "frog", "garbage", "gift", "giraffe", "girl", "give",
+  "glasswindow", "go", "goose", "grandma", "grandpa", "grass", "green", "gum",
+  "hair", "happy", "hat", "hate", "have", "haveto", "head", "hear",
+  "helicopter", "hello", "hen", "hesheit", "hide", "high", "home", "horse",
+  "hot", "hungry", "icecream", "if", "into", "jacket", "jeans", "jump",
+  "kiss", "kitty", "lamp", "later", "like", "lion", "lips", "listen",
+  "look", "loud", "mad", "make", "man", "many", "milk", "minemy",
+  "mitten", "mom", "moon", "morning", "mouse", "mouth", "nap", "napkin",
+  "night", "no", "noisy", "nose", "not", "now", "nuts", "old",
+  "on", "open", "orange", "outside", "owie", "owl", "pajamas", "pen",
+  "pencil", "penny", "person", "pig", "pizza", "please", "police", "pool",
+  "potty", "pretend", "pretty", "puppy", "puzzle", "quiet", "radio", "rain",
+  "read", "red", "refrigerator", "ride", "room", "sad", "same", "say",
+  "scissors", "see", "shhh", "shirt", "shoe", "shower", "sick", "sleep",
+  "sleepy", "smile", "snack", "snow", "stairs", "stay", "sticky", "store",
+  "story", "stuck", "sun", "table", "talk", "taste", "thankyou", "that",
+  "there", "think", "thirsty", "tiger", "time", "tomorrow", "tongue", "tooth",
+  "toothbrush", "touch", "toy", "tree", "uncle", "underwear", "up", "vacuum",
+  "wait", "wake", "water", "wet", "weus", "where", "white", "who",
+  "why", "will", "wolf", "yellow", "yes", "yesterday", "yourself", "yucky",
+  "zebra", "zipper",
 ];
 
 // A correction is intentionally keyed to a local motion template, not to a
@@ -89,20 +93,23 @@ const LABELS = [
 // mistaken `blue` result without making every genuine blue sign say `bye`.
 // Templates contain normalized landmark coordinates only and never leave this
 // browser unless the user independently chooses to submit a final word.
-// v2 is model-aligned: old v1 hand-only templates remain untouched in browser
-// storage, but are not mixed with this incompatible feature representation.
-const PERSONAL_TEMPLATE_STORAGE_KEY = 'signbridge.asl.personal-templates.v2';
+// A new model-specific key prevents old 25-word corrections from overriding
+// predictions from the replacement. Existing stored data is left untouched.
+const PERSONAL_TEMPLATE_STORAGE_KEY = 'signbridge.asl.jamesbustos-250.templates.v1';
 const PERSONAL_TEMPLATE_SAMPLES_PER_WORD = 5;
 const PERSONAL_TEMPLATE_DEFAULT_MAX_DISTANCE = 0.6;
 const PERSONAL_TEMPLATE_MIN_MAX_DISTANCE = 0.4;
 const PERSONAL_TEMPLATE_MAX_MAX_DISTANCE = 0.85;
 const PERSONAL_TEMPLATE_AMBIGUITY_MARGIN = 0.08;
 const PERSONAL_TEMPLATE_SIGNATURE_LENGTH =
-  TARGET_FRAMES * MODEL_FEATURE_POINTS_PER_FRAME * 3;
+  TARGET_FRAMES * TEMPLATE_FEATURE_POINTS * 3;
 
 let sessionPromise;
 let captureActive = false;
 let rollingFrames = [];
+let captureFrames = [];
+let captureGeneration = 0;
+let captureOverflowed = false;
 let lastCapturedAtMs = Number.NEGATIVE_INFINITY;
 let lastCompletedSignature;
 let status = 'idle';
@@ -122,7 +129,8 @@ function finiteNumber(value) {
 }
 
 function validPoint(point) {
-  return point && finiteNumber(point.x) && finiteNumber(point.y);
+  return point && finiteNumber(point.x) && finiteNumber(point.y) &&
+    finiteNumber(point.z);
 }
 
 function pointZ(point) {
@@ -156,27 +164,31 @@ function hasModelCompatibleFrame({faceLandmarks, poseLandmarks}) {
   );
 }
 
-function packFrame({faceLandmarks, poseLandmarks, leftHand, rightHand}) {
-  const values = new Float32Array(VALUES_PER_FRAME);
+function validHand(points) {
+  return Array.isArray(points) && points.length === HAND_POINTS &&
+    points.every((point) => validPoint(point) && point.visibility !== 0);
+}
+
+export function packFrame({faceLandmarks, poseLandmarks, leftHand, rightHand}) {
+  const values = new Float32Array(VALUES_PER_FRAME).fill(Number.NaN);
   copyPoints(values, 0, faceLandmarks, FACE_POINTS);
-  copyPoints(values, FACE_POINTS, poseLandmarks, POSE_POINTS);
-  copyPoints(values, FACE_POINTS + POSE_POINTS, leftHand, HAND_POINTS);
+  copyPoints(values, POSE_START, poseLandmarks, POSE_POINTS);
+  copyPoints(values, LEFT_HAND_START, leftHand, HAND_POINTS);
   copyPoints(
     values,
-    FACE_POINTS + POSE_POINTS + HAND_POINTS,
+    RIGHT_HAND_START,
     rightHand,
     HAND_POINTS,
   );
   return values;
 }
 
-function resampleFrames(frames) {
+export function resampleFrames(frames) {
   const output = new Float32Array(TARGET_FRAMES * VALUES_PER_FRAME);
   const lastIndex = frames.length - 1;
   for (let targetIndex = 0; targetIndex < TARGET_FRAMES; targetIndex += 1) {
-    // The upstream Python implementation uses np.linspace(..., dtype=int),
-    // which truncates non-negative indices. Matching that selection exactly
-    // avoids shifting the model's temporal motion features by one frame.
+    // Preserve the whole sign when it is longer than the 30-frame live window.
+    // Sampling is an application policy; the upstream demo uses a rolling window.
     const sourceIndex = Math.floor(
       (targetIndex * lastIndex) / Math.max(1, TARGET_FRAMES - 1),
     );
@@ -189,13 +201,13 @@ function hasTrackedHandPoint(values, offset) {
   const x = values[offset];
   const y = values[offset + 1];
   const z = values[offset + 2];
-  return x !== 0 || y !== 0 || z !== 0;
+  return finiteNumber(x) && finiteNumber(y) && finiteNumber(z);
 }
 
 function averageHandMotion(previous, current) {
   const handOffsets = [
-    (FACE_POINTS + POSE_POINTS) * VALUES_PER_POINT,
-    (FACE_POINTS + POSE_POINTS + HAND_POINTS) * VALUES_PER_POINT,
+    (LEFT_HAND_START) * VALUES_PER_POINT,
+    (RIGHT_HAND_START) * VALUES_PER_POINT,
   ];
   let total = 0;
   let count = 0;
@@ -232,11 +244,17 @@ function activeMotionFrames(frames) {
   }
   if (firstActive === -1 || lastActive === -1) return frames;
 
-  const start = Math.max(0, firstActive - ACTIVE_LEADING_CONTEXT_FRAMES);
-  const end = Math.min(
+  let start = Math.max(0, firstActive - ACTIVE_LEADING_CONTEXT_FRAMES);
+  let end = Math.min(
     frames.length,
     lastActive + ACTIVE_TRAILING_CONTEXT_FRAMES + 1,
   );
+  // Preserve actual temporal samples for the browser input allocation. Extend the
+  // selected interval with real context instead of repeating short captures.
+  if (end - start < TARGET_FRAMES) {
+    start = Math.max(0, end - TARGET_FRAMES);
+    end = Math.min(frames.length, Math.max(end, start + TARGET_FRAMES));
+  }
   const activeFrames = frames.slice(start, end);
   return activeFrames.length >= MIN_TEMPLATE_CAPTURED_FRAMES
     ? activeFrames
@@ -262,8 +280,8 @@ function handTrackedInFrame(frame, handStartPoint) {
 // not a copy of its coordinates. It makes the browser-side handoff observable
 // without exposing camera images or landmark data to Flutter or the backend.
 function modelInputSummary(frames, capturedFrameCount) {
-  const leftHandStart = FACE_POINTS + POSE_POINTS;
-  const rightHandStart = leftHandStart + HAND_POINTS;
+  const leftHandStart = LEFT_HAND_START;
+  const rightHandStart = RIGHT_HAND_START;
   const leftHandTrackedFrames = frames.filter((frame) =>
     handTrackedInFrame(frame, leftHandStart),
   ).length;
@@ -278,6 +296,7 @@ function modelInputSummary(frames, capturedFrameCount) {
     model_feature_points: MODEL_FEATURE_POINTS_PER_FRAME,
     model_face_feature_points: MODEL_FACE_FEATURE_POINTS.length,
     model_hand_feature_points: HAND_POINTS * 2,
+    model_pose_feature_points: POSE_POINTS,
     captured_frames: capturedFrameCount,
     selected_frames: frames.length,
     face_points: FACE_POINTS,
@@ -293,7 +312,7 @@ function modelInputDetail(summary) {
   return (
     `Model input: ${summary.landmark_points} x/y/z landmarks × ` +
     `${summary.model_frames} frames · features ${summary.model_face_feature_points} ` +
-    `face + ${summary.model_hand_feature_points} hand · hands L ${summary.left_hand_tracked_frames}/` +
+    `face + ${summary.model_hand_feature_points} hand + ${summary.model_pose_feature_points} pose · hands L ${summary.left_hand_tracked_frames}/` +
     `${summary.selected_frames} R ${summary.right_hand_tracked_frames}/` +
     `${summary.selected_frames}`
   );
@@ -301,14 +320,14 @@ function modelInputDetail(summary) {
 
 function normalizedPersonalLabel(value) {
   const label = String(value ?? '').trim().toLowerCase();
-  return label.length > 0 && label.length <= 80 ? label : null;
+  return LABELS.find((candidate) => candidate.toLowerCase() === label) ?? null;
 }
 
 function pointOffset(frameOffset, pointIndex) {
   return frameOffset + pointIndex * VALUES_PER_POINT;
 }
 
-function completedCaptureSignature(frames) {
+export function completedCaptureSignature(frames) {
   if (!Array.isArray(frames) || frames.length < MIN_TEMPLATE_CAPTURED_FRAMES) {
     return null;
   }
@@ -326,8 +345,8 @@ function completedCaptureSignature(frames) {
     const appendFeature = (pointIndex) => {
       const offset = pointOffset(frameOffset, pointIndex);
       features.push({
-        x: values[offset],
-        y: values[offset + 1],
+        x: finiteNumber(values[offset]) ? values[offset] : 0,
+        y: finiteNumber(values[offset + 1]) ? values[offset + 1] : 0,
         present: hasTrackedHandPoint(values, offset),
       });
     };
@@ -335,34 +354,34 @@ function completedCaptureSignature(frames) {
       appendFeature(pointIndex);
     }
     for (let pointIndex = 0; pointIndex < HAND_POINTS; pointIndex += 1) {
-      appendFeature(FACE_POINTS + POSE_POINTS + pointIndex);
+      appendFeature(LEFT_HAND_START + pointIndex);
     }
     for (let pointIndex = 0; pointIndex < HAND_POINTS; pointIndex += 1) {
       appendFeature(
-        FACE_POINTS + POSE_POINTS + HAND_POINTS + pointIndex,
+        RIGHT_HAND_START + pointIndex,
       );
     }
     featureFrames.push(features);
   }
 
-  // Mirror the checkpoint's PreprocessingLayer: normalize x/y against the
-  // sequence mean of face point 17, then use the selected-feature sequence
-  // standard deviation. Presence is an extra local-template signal only; the
-  // neural model itself still receives the original 543-slot tensor.
+  // This normalization belongs only to optional personal gesture matching.
+  // TFLite receives raw x/y/z with NaN; it performs its own preprocessing.
   faceAnchorX /= TARGET_FRAMES;
   faceAnchorY /= TARGET_FRAMES;
-  const featureCount = TARGET_FRAMES * MODEL_FEATURE_POINTS_PER_FRAME;
+  const featureCount = TARGET_FRAMES * TEMPLATE_FEATURE_POINTS;
+  const featureMeanX = featureFrames.flat().reduce((sum, p) => sum + p.x, 0) / featureCount;
+  const featureMeanY = featureFrames.flat().reduce((sum, p) => sum + p.y, 0) / featureCount;
   let xSquaredDistance = 0;
   let ySquaredDistance = 0;
   for (const features of featureFrames) {
     for (const feature of features) {
-      xSquaredDistance += (feature.x - faceAnchorX) ** 2;
-      ySquaredDistance += (feature.y - faceAnchorY) ** 2;
+      xSquaredDistance += (feature.x - featureMeanX) ** 2;
+      ySquaredDistance += (feature.y - featureMeanY) ** 2;
     }
   }
   const varianceDivisor = Math.max(1, featureCount - 1);
-  const xScale = Math.sqrt(xSquaredDistance / varianceDivisor) || 1;
-  const yScale = Math.sqrt(ySquaredDistance / varianceDivisor) || 1;
+  const xScale = Math.sqrt(xSquaredDistance / varianceDivisor) + 1e-8;
+  const yScale = Math.sqrt(ySquaredDistance / varianceDivisor) + 1e-8;
   const signature = [];
   for (const features of featureFrames) {
     for (const feature of features) {
@@ -548,15 +567,17 @@ export function teachLastAslCapture(label) {
   };
 }
 
-function softmax(logits) {
-  const maximum = Math.max(...logits);
-  const exponentials = logits.map((value) => Math.exp(value - maximum));
-  const total = exponentials.reduce((sum, value) => sum + value, 0);
-  return exponentials.map((value) => value / total);
-}
-
-function rankedPredictions(logits) {
-  const probabilities = softmax(Array.from(logits));
+export function rankedPredictions(scores) {
+  if (!scores || scores.length !== LABELS.length ||
+      !Array.from(scores).every((value) => finiteNumber(value) && value >= 0 && value <= 1)) {
+    throw new Error('ASL model must return 250 finite probabilities in manifest label order.');
+  }
+  const probabilities = Array.from(scores);
+  const total = probabilities.reduce((sum, value) => sum + value, 0);
+  if (Math.abs(total - 1) > 0.001) {
+    throw new Error('ASL model probabilities must sum to one.');
+  }
+  // The TFLite graph already ends in softmax. Applying it again destroys confidence.
   return probabilities
     .map((confidence, index) => ({
       word: LABELS[index] ?? `class_${index}`,
@@ -569,6 +590,19 @@ function rankedPredictions(logits) {
       rank: index + 1,
       confidence: Number(candidate.confidence.toFixed(6)),
     }));
+}
+
+export function validateModelManifest(manifest) {
+  if (manifest?.model_id !== MODEL_VERSION ||
+      manifest.input_name !== 'serving_default_inputs:0' ||
+      manifest.output_name !== 'StatefulPartitionedCall:0' ||
+      manifest.output_type !== 'probabilities' || manifest.missing_landmarks !== 'NaN' ||
+      JSON.stringify(manifest.output_shape) !== JSON.stringify([1, LABELS.length]) ||
+      JSON.stringify(manifest.input_shape) !== JSON.stringify([TARGET_FRAMES, MODEL_LANDMARKS_PER_FRAME, 3]) ||
+      JSON.stringify(manifest.landmark_order) !== JSON.stringify(['face_468', 'left_hand_21', 'pose_33', 'right_hand_21']) ||
+      JSON.stringify(manifest.labels) !== JSON.stringify(LABELS)) {
+    throw new Error('ASL model manifest does not match the tracker tensor and label order.');
+  }
 }
 
 function unknownOutcome(reason, frames = [], metadata = {}) {
@@ -586,51 +620,25 @@ function unknownOutcome(reason, frames = [], metadata = {}) {
   };
 }
 
-async function createSessionWithRuntime(runtime, provider) {
-  if (provider === 'wasm') {
-    // Flutter's development server is not cross-origin isolated, so use one
-    // WASM thread there. Isolated production deployments can use a second
-    // worker without oversubscribing lower-powered phones.
-    runtime.env.wasm.numThreads = globalThis.crossOriginIsolated
-      ? Math.min(2, globalThis.navigator?.hardwareConcurrency ?? 1)
-      : 1;
-    runtime.env.wasm.proxy = false;
-  }
-  const session = await runtime.InferenceSession.create(MODEL_URL, {
-    executionProviders: [provider],
-    graphOptimizationLevel: 'all',
-  });
-  // Compile and allocate before the signer finishes their first word. The
-  // fixed tensor shape makes this warm-up representative without exposing
-  // real landmark data to any other component.
-  const warmup = new runtime.Tensor(
-    'float32',
-    new Float32Array(TARGET_FRAMES * VALUES_PER_FRAME),
-    [1, TARGET_FRAMES, FACE_POINTS + POSE_POINTS + 2 * HAND_POINTS, 3],
-  );
-  await session.run({landmarks: warmup});
-  return {session, runtime, provider};
-}
-
 async function createSession() {
-  dispatchStatus('loading', 'Preparing local ASL model');
-  let handle;
-  if (globalThis.navigator?.gpu) {
-    try {
-      const webgpuRuntime = await import(WEBGPU_RUNTIME_URL);
-      handle = await createSessionWithRuntime(webgpuRuntime, 'webgpu');
-    } catch (error) {
-      // Some browsers expose WebGPU but cannot execute every operator in this
-      // temporal model. Fall back without making recognition unavailable.
-      console.info('Local ASL WebGPU unavailable; using WASM.', error);
-    }
-  }
-  if (!handle) {
-    const wasmRuntime = await import(WASM_RUNTIME_URL);
-    handle = await createSessionWithRuntime(wasmRuntime, 'wasm');
+  dispatchStatus('loading', 'Preparing local 250-sign ASL model');
+  const manifestResponse = await fetch(MANIFEST_URL);
+  if (!manifestResponse.ok) throw new Error('ASL model manifest could not be loaded.');
+  const manifest = await manifestResponse.json();
+  validateModelManifest(manifest);
+  const handle = await createAslModelHandle(MODEL_URL, manifest);
+  try {
+    const warmup = new Float32Array(TARGET_FRAMES * VALUES_PER_FRAME).fill(Number.NaN);
+    // The first invocation reallocates dynamic LSTM tensors. TFJS-TFLite can
+    // return a stale output view on that call; prime it before validating.
+    await handle.predict(warmup);
+    rankedPredictions(await handle.predict(warmup));
+  } catch (error) {
+    handle.dispose();
+    throw error;
   }
   lastError = undefined;
-  dispatchStatus('ready', `Local ASL model ready (${handle.provider})`);
+  dispatchStatus('ready', '250-sign ASL model ready');
   return handle;
 }
 
@@ -647,15 +655,23 @@ export function prepareAslRecognizer() {
 }
 
 export function beginAslCapture() {
+  if (captureActive) return;
   captureActive = true;
+  captureGeneration += 1;
+  captureFrames = rollingFrames.slice(-PRE_ROLL_FRAMES);
+  captureOverflowed = false;
   // Begin loading as early as possible so an ordinary one-second sign does
   // not have to wait for the model download after the signer has finished.
   void prepareAslRecognizer().catch(() => {});
 }
 
 export function resetAslCapture() {
+  captureGeneration += 1;
   captureActive = false;
   rollingFrames = [];
+  captureFrames = [];
+  captureOverflowed = false;
+  lastCompletedSignature = undefined;
   lastCapturedAtMs = Number.NEGATIVE_INFINITY;
 }
 
@@ -667,7 +683,10 @@ export function ingestAslFrame({
   rightHand,
   subjectTracking,
 }) {
-  if (subjectTracking?.locked !== true) return;
+  if (subjectTracking?.locked !== true) {
+    rollingFrames = [];
+    return;
+  }
   if (
     subjectTracking.visible === false ||
     !hasModelCompatibleFrame({
@@ -680,27 +699,61 @@ export function ingestAslFrame({
     return;
   }
   const recordedAtMs = finiteNumber(timestampMs) ? timestampMs : Date.now();
-  if (recordedAtMs - lastCapturedAtMs < CAPTURE_SAMPLE_INTERVAL_MS) return;
+  if (recordedAtMs <= lastCapturedAtMs) return;
+  if (recordedAtMs - lastCapturedAtMs > MAX_FRAME_GAP_MS) rollingFrames = [];
   lastCapturedAtMs = recordedAtMs;
-  rollingFrames.push({
+  const frame = {
     timestampMs: recordedAtMs,
-    values: packFrame({faceLandmarks, poseLandmarks, leftHand, rightHand}),
-  });
-  if (rollingFrames.length > MAX_CAPTURED_FRAMES) rollingFrames.shift();
+    values: packFrame({
+      faceLandmarks, poseLandmarks,
+      leftHand: validHand(leftHand) ? leftHand : [],
+      rightHand: validHand(rightHand) ? rightHand : [],
+    }),
+  };
+  rollingFrames.push(frame);
+  if (rollingFrames.length > PRE_ROLL_FRAMES) rollingFrames.shift();
+  if (captureActive) {
+    captureFrames.push(frame);
+    if (captureFrames.length > MAX_CAPTURED_FRAMES) {
+      captureOverflowed = true;
+      captureFrames.shift();
+    }
+  }
 }
 
 export async function finishAslCapture() {
+  if (!captureActive) return unknownOutcome('no_active_capture');
+  const generation = captureGeneration;
   captureActive = false;
-  // Match the upstream live recognizer: predict from the latest continuous
-  // 30-frame Holistic buffer. Do not cut this to just the detected movement;
-  // the model was trained with its leading/trailing temporal context.
-  const captured = rollingFrames.slice(-MAX_CAPTURED_FRAMES);
-  const frames = captured;
+  const captured = captureFrames;
+  captureFrames = [];
+  rollingFrames = [];
+  lastCompletedSignature = undefined;
+  // A pause completes the sign; it must not push the sign itself out of a
+  // rolling one-second window. Keep the whole bounded capture, then trim
+  // idle context before selecting the model's 30 temporal samples.
+  const frames = activeMotionFrames(captured);
   // Personal corrections retain their own movement-focused signature so a
   // previously taught sign remains stable across naturally longer pauses.
   const templateFrames = activeMotionFrames(captured);
   const inputSummary = modelInputSummary(frames, captured.length);
   const inputDetail = modelInputDetail(inputSummary);
+  if (captured.some((frame, index) => index > 0 &&
+      frame.timestampMs - captured[index - 1].timestampMs > MAX_FRAME_GAP_MS)) {
+    return unknownOutcome('tracking_interrupted', frames, {input_summary: inputSummary});
+  }
+  if (captureOverflowed || captured.length >= MAX_CAPTURED_FRAMES ||
+      captured.at(-1)?.timestampMs - captured[0]?.timestampMs > MAX_CAPTURE_DURATION_MS) {
+    return unknownOutcome('capture_too_long', frames, {input_summary: inputSummary});
+  }
+  const handFrames = frames.filter((frame) =>
+    handTrackedInFrame(frame, LEFT_HAND_START) ||
+    handTrackedInFrame(frame, RIGHT_HAND_START));
+  if (handFrames.length < MIN_MODEL_CAPTURED_FRAMES) {
+    return unknownOutcome('too_few_hand_frames', frames, {
+      input_summary: inputSummary, detail: inputDetail,
+    });
+  }
   if (frames.length < MIN_MODEL_CAPTURED_FRAMES) {
     return unknownOutcome('too_few_model_frames', frames, {
       captured_frame_count: captured.length,
@@ -734,7 +787,7 @@ export async function finishAslCapture() {
       ended_at_ms: frames.at(-1)?.timestampMs ?? null,
       input_summary: inputSummary,
       detail:
-        `Personal model-aligned template · distance ${personalMatch.distance.toFixed(3)}/` +
+        `Personal gesture template · distance ${personalMatch.distance.toFixed(3)}/` +
         `${personalMatch.threshold.toFixed(3)} · ` +
         inputDetail,
       execution_provider: 'personal_template',
@@ -744,6 +797,7 @@ export async function finishAslCapture() {
   let handle;
   try {
     handle = await prepareAslRecognizer();
+    if (generation !== captureGeneration) return unknownOutcome('capture_cancelled');
   } catch (_) {
     return {
       status: 'unavailable',
@@ -763,21 +817,17 @@ export async function finishAslCapture() {
 
   try {
     const startedAt = performance.now();
-    const tensor = new handle.runtime.Tensor(
-      'float32',
-      resampleFrames(frames),
-      [1, TARGET_FRAMES, FACE_POINTS + POSE_POINTS + 2 * HAND_POINTS, 3],
-    );
-    const outputs = await handle.session.run({landmarks: tensor});
-    const alternatives = rankedPredictions(outputs.logits.data);
+    const scores = await handle.predict(resampleFrames(frames));
+    if (generation !== captureGeneration) return unknownOutcome('capture_cancelled');
+    const alternatives = rankedPredictions(scores);
     const best = alternatives[0];
-    const runnerUp = alternatives[1];
     const inferenceMs = Math.round(performance.now() - startedAt);
-    const isAmbiguous =
-      runnerUp && best && best.confidence - runnerUp.confidence < MIN_CONFIDENCE_MARGIN;
-    if (!best || best.confidence < MIN_CONFIDENCE || isAmbiguous) {
+    // The upstream application accepts its top class when it exceeds 70%.
+    // Do not add a second margin gate: a calibrated softmax can be confident
+    // even when the runner-up is nearby.
+    if (!best || best.confidence < MIN_CONFIDENCE) {
       return {
-        ...unknownOutcome(isAmbiguous ? 'ambiguous_prediction' : 'low_confidence', frames),
+        ...unknownOutcome('low_confidence', frames),
         confidence: best?.confidence ?? 0,
         alternatives,
         inference_ms: inferenceMs,
@@ -822,8 +872,17 @@ export async function finishAslCapture() {
   }
 }
 
+// Sign-by-sign names used by the live frontend. The older capture names stay
+// exported for compatibility with existing tests and integrations.
+export const beginAslSignCapture = beginAslCapture;
+export const finishAslSignCapture = finishAslCapture;
+export const resetAslSignCapture = resetAslCapture;
+
 globalThis.signBridgeAslRecognizer = Object.freeze({
   prepare: prepareAslRecognizer,
+  beginSignCapture: beginAslCapture,
+  finishSignCapture: finishAslCapture,
+  resetSignCapture: resetAslCapture,
   beginCapture: async () => {
     beginAslCapture();
   },

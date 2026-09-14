@@ -19,6 +19,7 @@ let inputMode = "sign",
 let cameraStream = null,
   cameraStarting = false,
   cameraRevision = 0,
+  cameraFacing = "user",
   typingAt = 0;
 const finalMessages = new Set();
 const params = new URLSearchParams(location.search);
@@ -466,8 +467,22 @@ function stopCamera() {
   $("camera-toggle").textContent = "Open camera preview";
   activity("idle");
 }
-async function camera() {
-  if (cameraStream) return stopCamera();
+
+function updateCameraFacingUi() {
+  const isFrontCamera = cameraFacing === "user";
+  $("camera").classList.toggle("front-camera", isFrontCamera);
+  $("camera-switch").textContent = isFrontCamera
+    ? "Use back camera"
+    : "Use front camera";
+  $("camera-switch").setAttribute(
+    "aria-label",
+    isFrontCamera ? "Switch to back camera" : "Switch to front camera",
+  );
+  $("camera-facing").textContent =
+    (isFrontCamera ? "Front" : "Back") + " camera selected.";
+}
+
+async function startCamera() {
   if (cameraStarting) return;
   if (!navigator.mediaDevices?.getUserMedia)
     return notice(
@@ -476,9 +491,10 @@ async function camera() {
   cameraStarting = true;
   const revision = ++cameraRevision;
   $("camera-toggle").disabled = true;
+  $("camera-switch").disabled = true;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
+      video: { facingMode: { ideal: cameraFacing } },
       audio: false,
     });
     if (revision !== cameraRevision || stopped || inputMode !== "sign") {
@@ -486,6 +502,12 @@ async function camera() {
       return;
     }
     cameraStream = stream;
+    const actualFacing = stream
+      .getVideoTracks?.()[0]
+      ?.getSettings?.().facingMode;
+    if (actualFacing === "user" || actualFacing === "environment")
+      cameraFacing = actualFacing;
+    updateCameraFacingUi();
     $("camera").srcObject = stream;
     $("camera").hidden = false;
     $("camera-placeholder").hidden = true;
@@ -498,7 +520,22 @@ async function camera() {
   } finally {
     cameraStarting = false;
     $("camera-toggle").disabled = false;
+    $("camera-switch").disabled = false;
   }
+}
+
+async function camera() {
+  if (cameraStream) return stopCamera();
+  return startCamera();
+}
+
+async function switchCamera() {
+  if (cameraStarting) return;
+  cameraFacing = cameraFacing === "user" ? "environment" : "user";
+  updateCameraFacingUi();
+  if (!cameraStream) return;
+  stopCamera();
+  await startCamera();
 }
 function stopRecognition() {
   recognition?.abort();
@@ -622,6 +659,7 @@ $("quick-sign").onclick = () => {
     .scrollIntoView({ behavior: "smooth", block: "start" });
 };
 $("camera-toggle").onclick = camera;
+$("camera-switch").onclick = switchCamera;
 $("microphone").onclick = microphone;
 $("copy").onclick = async () => {
   const link = `${location.origin}/conversation?room=${credentials.code}`;

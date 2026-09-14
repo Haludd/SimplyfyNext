@@ -464,7 +464,17 @@ summary {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: none;
+}
+.camera-box video.front-camera {
   transform: scaleX(-1);
+}
+.camera-controls {
+  display: grid;
+  gap: 8px;
+}
+.camera-facing {
+  margin: 8px 0 0;
 }
 #camera-placeholder {
   display: flex;

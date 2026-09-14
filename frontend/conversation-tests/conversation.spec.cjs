@@ -134,6 +134,91 @@ test("conversation layout is responsive from small phones to laptops", async ({
   }
 });
 
+test("camera preview switches between front and back cameras", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.cameraRequests = [];
+    window.cameraStops = 0;
+
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+      configurable: true,
+      get() {
+        return this.testStream || null;
+      },
+      set(stream) {
+        this.testStream = stream;
+      },
+    });
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async (constraints) => {
+          const facingMode =
+            constraints.video?.facingMode?.ideal ||
+            constraints.video?.facingMode ||
+            "user";
+          window.cameraRequests.push(facingMode);
+          const track = {
+            stop() {
+              window.cameraStops += 1;
+            },
+            getSettings() {
+              return { facingMode };
+            },
+          };
+          return {
+            getTracks() {
+              return [track];
+            },
+            getVideoTracks() {
+              return [track];
+            },
+          };
+        },
+      },
+    });
+  });
+
+  await page.goto("/conversation");
+  await showRoomWithoutConnecting(page);
+
+  await expect(page.locator("#camera-switch")).toHaveText("Use back camera");
+  await page.locator("#camera-toggle").click();
+  await expect(page.locator("#camera")).toBeVisible();
+  await expect(page.locator("#camera")).toHaveClass(/front-camera/);
+  await expect
+    .poll(() => page.evaluate(() => window.cameraRequests))
+    .toEqual(["user"]);
+
+  await page.locator("#camera-switch").click();
+  await expect
+    .poll(() => page.evaluate(() => window.cameraRequests))
+    .toEqual(["user", "environment"]);
+  await expect(page.locator("#camera-switch")).toHaveText("Use front camera");
+  await expect(page.locator("#camera-facing")).toHaveText(
+    "Back camera selected.",
+  );
+  await expect(page.locator("#camera")).not.toHaveClass(/front-camera/);
+  expect(await page.evaluate(() => window.cameraStops)).toBe(1);
+
+  await page.locator("#camera-switch").click();
+  await expect
+    .poll(() => page.evaluate(() => window.cameraRequests))
+    .toEqual(["user", "environment", "user"]);
+  await expect(page.locator("#camera-switch")).toHaveText("Use back camera");
+  await expect(page.locator("#camera-facing")).toHaveText(
+    "Front camera selected.",
+  );
+  await expect(page.locator("#camera")).toHaveClass(/front-camera/);
+  expect(await page.evaluate(() => window.cameraStops)).toBe(2);
+
+  await page.locator("#camera-toggle").click();
+  await expect(page.locator("#camera")).toBeHidden();
+  expect(await page.evaluate(() => window.cameraStops)).toBe(3);
+});
+
 test("phone composer remains reachable when the virtual keyboard reduces height", async ({
   page,
 }) => {

@@ -145,16 +145,44 @@
               </div>
               <div id="sign-input">
                 <div class="camera-box">
-                  <video id="camera" autoplay muted playsinline hidden></video>
+                  <video
+                    id="camera"
+                    class="front-camera"
+                    autoplay
+                    muted
+                    playsinline
+                    hidden
+                  ></video>
                   <div id="camera-placeholder">
                     <span class="camera-symbol" aria-hidden="true">⌁</span
                     ><b>Your signing space</b
                     ><span>Open your camera when you’re ready.</span>
                   </div>
                 </div>
-                <button id="camera-toggle" class="secondary wide">
-                  Open camera preview
-                </button>
+                <div class="camera-controls">
+                  <button
+                    id="camera-toggle"
+                    type="button"
+                    class="secondary wide"
+                  >
+                    Open camera preview
+                  </button>
+                  <button
+                    id="camera-switch"
+                    type="button"
+                    class="secondary wide"
+                    aria-label="Switch to back camera"
+                  >
+                    Use back camera
+                  </button>
+                </div>
+                <p
+                  id="camera-facing"
+                  class="small camera-facing"
+                  role="status"
+                >
+                  Front camera selected.
+                </p>
                 <p class="small">
                   Preview only until your classifier is connected. Camera video
                   stays on this device.

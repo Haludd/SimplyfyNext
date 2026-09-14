@@ -210,6 +210,7 @@ class LatticeTranslationEngine:
         agent_model_version: str | None,
         assembler_ready: bool,
         loop_cap: int,
+        provider_client: CostGuardedConverseClient | None = None,
     ) -> None:
         self.agent_graph = agent_graph
         self._repair_node = repair_node
@@ -222,6 +223,7 @@ class LatticeTranslationEngine:
         self.agent_model_version = agent_model_version
         self.assembler_ready = assembler_ready
         self.loop_cap = loop_cap
+        self.provider_client = provider_client
 
     @property
     def ready(self) -> bool:
@@ -676,6 +678,9 @@ def build_lattice_translation_engine(
         agent_model_version=model_version,
         assembler_ready=assembler_ready,
         loop_cap=settings.agent_max_revisions,
+        provider_client=(
+            guarded_client if settings.bedrock_enabled or settings.anthropic_enabled else None
+        ),
     )
 
 
@@ -698,8 +703,10 @@ def _load_caption_templates(path: Path | None) -> dict[tuple[str, ...], CaptionT
             glosses = item.get("glosses")
             caption = item.get("caption")
             tts_text = item.get("tts_text")
-            if not isinstance(glosses, list) or not glosses or not all(
-                isinstance(value, str) and value for value in glosses
+            if (
+                not isinstance(glosses, list)
+                or not glosses
+                or not all(isinstance(value, str) and value for value in glosses)
             ):
                 raise ValueError("caption template glosses must be non-empty strings")
             if not isinstance(caption, str) or (

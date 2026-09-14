@@ -27,11 +27,23 @@ def main(argv: list[str] | None = None) -> int:
         if not prompt_path.is_file() or not prompt.strip():
             raise SystemExit(f"packaged prompt is empty: {prompt_path.name}")
 
+    for role in ("assembler", "critic"):
+        prompt = package_root.joinpath("agent", "prompts", f"word_{role}_v1.txt").read_text()
+        if "UNTRUSTED DATA" not in prompt:
+            raise SystemExit("packaged word prompt is missing its trust boundary")
+    for name in ("translated-sign-utterance-v1.json", "room-events-v1.json"):
+        schema = json.loads(package_root.joinpath("contracts", "schemas", name).read_text())
+        if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema":
+            raise SystemExit("packaged word/room schema is invalid")
+
     template_path = Path(args[0])
     templates = json.loads(template_path.read_text(encoding="utf-8"))
     if not isinstance(templates, dict) or not templates:
         raise SystemExit("deterministic template data is empty or malformed")
-    print(f"package={simplynext.__name__} prompts=2 templates={len(templates)}")
+    print(
+        f"package={simplynext.__name__} prompts=2 word_prompts=2 schemas=2 "
+        f"templates={len(templates)}"
+    )
     return 0
 
 

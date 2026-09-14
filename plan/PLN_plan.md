@@ -1,5 +1,12 @@
 **SIMPLYNEXT BACKEND IMPLEMENTATION PLAN**
 
+**2026-09-15 scope note:** The current implementation round is governed by root
+[`PLN_plan_v1.md`](../../PLN_plan_v1.md), with changes in root
+[`UPDATE_LOG.md`](../../UPDATE_LOG.md). Its milestones 1–2 now have local implementation and
+verification; milestone 0 has shared schemas, generated client types and fixtures but still needs
+frontend acceptance evidence. [WORD_ROOM_V1.md](WORD_ROOM_V1.md) describes the implemented room
+and word pipeline. The plan below is the historical lattice baseline and its release work.
+
 # METADATA
 
 | Field | Value |

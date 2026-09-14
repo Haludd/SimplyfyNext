@@ -33,6 +33,7 @@ TEMPLATES_PATH = Path(__file__).parents[1] / "data" / "caption_templates.example
 def client() -> Iterator[TestClient]:
     app = create_app(
         Settings(
+            _env_file=None,
             environment="test",
             allowed_origins=(),
             bedrock_enabled=False,
@@ -216,6 +217,7 @@ def test_unresolved_slot_returns_graph_native_repair_without_caption(client: Tes
 
 def test_disconnect_after_ack_reconnects_to_the_cached_terminal_result() -> None:
     settings = Settings(
+        _env_file=None,
         environment="test",
         allowed_origins=(),
         bedrock_enabled=False,
@@ -260,6 +262,7 @@ def test_disconnect_after_ack_reconnects_to_the_cached_terminal_result() -> None
 
 def test_agent_capacity_returns_a_bounded_retryable_rate_limit() -> None:
     settings = Settings(
+        _env_file=None,
         environment="test",
         allowed_origins=(),
         bedrock_enabled=False,
@@ -396,6 +399,7 @@ def test_raw_size_binary_origin_and_auth_boundaries(client: TestClient) -> None:
 
     restricted = create_app(
         Settings(
+            _env_file=None,
             environment="test",
             allowed_origins=("https://allowed.example",),
             bedrock_enabled=False,

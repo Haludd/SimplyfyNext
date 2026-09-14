@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+import httpx
 import pytest
 
 from scripts.protocol_smoke import (
@@ -12,6 +13,7 @@ from scripts.protocol_smoke import (
     DEFAULT_REPAIR_FIXTURE,
     SmokeFailure,
     _http_url,
+    _metrics,
     _prepared_lattice,
     _require_explicit_live_spend_confirmation,
     _session_request,
@@ -19,6 +21,20 @@ from scripts.protocol_smoke import (
 )
 from simplynext.config import Settings
 from simplynext.contracts import SessionCreateResponse
+
+
+async def test_metrics_smoke_uses_separate_operator_capability(monkeypatch):
+    monkeypatch.setenv("SIMPLYNEXT_OPERATOR_METRICS_TOKEN", "synthetic-operator-capability")
+
+    def handler(request):
+        assert request.url.path == "/metrics"
+        assert request.headers["authorization"] == "Bearer synthetic-operator-capability"
+        return httpx.Response(200, json={"counters": {}})
+
+    async with httpx.AsyncClient(
+        base_url="http://testserver", transport=httpx.MockTransport(handler)
+    ) as client:
+        assert await _metrics(client) == {"counters": {}}
 
 
 def _args(**updates: object) -> Namespace:
@@ -55,9 +71,7 @@ def test_live_mode_requires_an_explicit_spend_confirmation_before_network_use() 
         _require_explicit_live_spend_confirmation(_args())
 
     _require_explicit_live_spend_confirmation(_args(confirm_live_spend=True))
-    _require_explicit_live_spend_confirmation(
-        _args(expect_agent_source="deterministic_template")
-    )
+    _require_explicit_live_spend_confirmation(_args(expect_agent_source="deterministic_template"))
 
 
 def test_phase1_fixtures_are_valid_and_bound_to_the_negotiated_session() -> None:

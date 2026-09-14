@@ -49,6 +49,7 @@ class FakeClock:
 def _engine():
     return build_lattice_translation_engine(
         Settings(
+            _env_file=None,
             environment="test",
             allowed_origins=(),
             bedrock_enabled=False,

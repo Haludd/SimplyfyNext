@@ -1,4 +1,4 @@
-"""Public GlossLattice wire contracts for the SimplyNext backend."""
+"""Public word/room v1 and retained legacy wire contracts."""
 
 from typing import Annotated, TypeAlias
 
@@ -45,6 +45,12 @@ from .sessions import (
     SessionResponse,
     StreamControlMessage,
     StreamKind,
+)
+from .translated_sign_utterance import (
+    TranslatedSignUtteranceV1,
+    WordAlternative,
+    WordProducer,
+    WordToken,
 )
 
 InboundLatticeStreamMessage: TypeAlias = Annotated[
@@ -94,4 +100,8 @@ __all__ = [
     "SignLanguage",
     "StreamControlMessage",
     "StreamKind",
+    "TranslatedSignUtteranceV1",
+    "WordAlternative",
+    "WordProducer",
+    "WordToken",
 ]

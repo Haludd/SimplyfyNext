@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -223,7 +224,9 @@ def _counter(metrics: Mapping[str, Any], name: str) -> int:
 
 
 async def _metrics(client: httpx.AsyncClient) -> Mapping[str, Any]:
-    response = await client.get("/metrics")
+    token = os.environ.get("SIMPLYNEXT_OPERATOR_METRICS_TOKEN")
+    headers = {} if not token else {"Authorization": f"Bearer {token}"}
+    response = await client.get("/metrics", headers=headers)
     if response.status_code != 200:
         raise SmokeFailure(f"metrics request failed with HTTP {response.status_code}")
     try:

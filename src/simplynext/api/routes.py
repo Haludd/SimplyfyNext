@@ -77,6 +77,21 @@ async def readiness(request: Request, response: Response) -> dict[str, object]:
                 else "deterministic"
             ),
         },
+        "rooms": {
+            "transport_ready": True,
+            "utterance_schema_version": "1.0",
+            "event_schema_version": "1.0",
+            "source_language": "asl",
+            "max_message_bytes": 16_384,
+            "word_policy_configured": services.settings.word_policy_path is not None,
+            "word_provider": (
+                "anthropic"
+                if services.settings.anthropic_enabled
+                else "bedrock"
+                if services.settings.bedrock_enabled
+                else "deterministic"
+            ),
+        },
     }
 
 

@@ -1,5 +1,13 @@
 **SIMPLYNEXT BACKEND ARCHITECTURE**
 
+**2026-09-15 migration status:** The main process also mounts the ASL word room runtime described
+in [WORD_ROOM_V1.md](WORD_ROOM_V1.md). `rooms/store.py` owns admission, capabilities, sequences,
+replay and erasure; `rooms/service.py` dispatches outside locks; `translation_runtime.py` applies
+the new producer policy; `agent/words/` independently assembles and criticizes aligned words.
+Rooms use immutable recent-10 context and no persistent checkpoints. They share the existing
+guarded provider client and application concurrency semaphore. Compaction is pending milestone 3.
+The sections below describe the legacy lattice runtime retained until milestone 4.
+
 # METADATA
 
 | Field | Value |

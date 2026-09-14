@@ -119,6 +119,20 @@ class Settings(BaseSettings):
     anthropic_total_max_attempts: int = Field(default=3, ge=1, le=10)
     agent_max_revisions: int = Field(default=1, ge=0, le=1)
 
+    # New v1 rooms use ASL words and their own evaluated score semantics. Legacy
+    # recognition probability settings never apply to normalized word scores.
+    word_policy_path: Path | None = None
+    word_templates_path: Path | None = None
+    room_max_active: int = Field(default=100, ge=1, le=1000)
+    room_max_messages: int = Field(default=300, ge=1, le=300)
+    room_invite_seconds: int = Field(default=600, ge=1, le=600)
+    room_idle_seconds: int = Field(default=1800, ge=1, le=7200)
+    room_absolute_seconds: int = Field(default=7200, ge=1, le=7200)
+    room_invitations_per_minute: int = Field(default=20, ge=1, le=120)
+    room_invitations_global_per_minute: int = Field(default=120, ge=1, le=1000)
+    room_messages_per_minute: int = Field(default=30, ge=1, le=300)
+    room_translation_timeout_seconds: float = Field(default=90, gt=0, le=300)
+
     @field_validator("api_prefix")
     @classmethod
     def validate_api_prefix(cls, value: str) -> str:

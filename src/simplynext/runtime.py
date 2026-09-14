@@ -9,6 +9,7 @@ from simplynext.agent import AgentGraph
 from simplynext.config import Settings
 from simplynext.lattice_runtime import LatticeTranslationEngine
 from simplynext.observability import MetricsRegistry
+from simplynext.rooms.service import RoomService
 from simplynext.sessions import EphemeralSessionStore
 
 
@@ -20,3 +21,4 @@ class RuntimeServices:
     agent_graph: AgentGraph
     metrics: MetricsRegistry
     agent_slots: Semaphore
+    rooms: RoomService

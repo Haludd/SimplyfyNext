@@ -46,6 +46,17 @@ url = "https://files.pythonhosted.org/packages/12/b8/4bd346e22b28902df4d651910f5
 sha256 = "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101"
 
 [[packages]]
+name = "attrs"
+version = "26.1.0"
+
+[[packages.wheels]]
+name = "attrs-26.1.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+
+[[packages]]
 name = "boto3"
 version = "1.43.89"
 
@@ -253,6 +264,28 @@ url = "https://files.pythonhosted.org/packages/9e/6a/a83720e953b1682d2d109d3c2db
 
 [packages.wheels.hashes]
 sha256 = "8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca"
+
+[[packages]]
+name = "jsonschema"
+version = "4.26.0"
+
+[[packages.wheels]]
+name = "jsonschema-4.26.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/69/90/f63fb5873511e014207a475e2bb4e8b2e570d655b00ac19a9a0ca0a385ee/jsonschema-4.26.0-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+
+[[packages]]
+name = "jsonschema-specifications"
+version = "2025.9.1"
+
+[[packages.wheels]]
+name = "jsonschema_specifications-2025.9.1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe"
 
 [[packages]]
 name = "langchain-core"
@@ -519,6 +552,17 @@ url = "https://files.pythonhosted.org/packages/89/a0/6cf41a19a1f2f3feab0e9c0b741
 sha256 = "fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0"
 
 [[packages]]
+name = "referencing"
+version = "0.37.0"
+
+[[packages.wheels]]
+name = "referencing-0.37.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231"
+
+[[packages]]
 name = "requests"
 version = "2.34.2"
 
@@ -541,6 +585,17 @@ url = "https://files.pythonhosted.org/packages/3f/51/d4db610ef29373b879047326cbf
 sha256 = "cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06"
 
 [[packages]]
+name = "rpds-py"
+version = "2026.6.3"
+
+[[packages.wheels]]
+name = "rpds_py-2026.6.3-cp312-cp312-macosx_11_0_arm64.whl"
+url = "https://files.pythonhosted.org/packages/a4/73/319dfa745dd668efe89309141ded489126461fcecd2b8f3a3cda185129b6/rpds_py-2026.6.3-cp312-cp312-macosx_11_0_arm64.whl"
+
+[packages.wheels.hashes]
+sha256 = "538949e262e46caa31ac01bdb3c1e8f642622922cacbabbae6a8445d9dc33eaf"
+
+[[packages]]
 name = "ruff"
 version = "0.16.6"
 
@@ -561,6 +616,13 @@ url = "https://files.pythonhosted.org/packages/bc/e7/5c595c75e9f41a44f30e526eda4
 
 [packages.wheels.hashes]
 sha256 = "d8168eccca828cbb2cd573675333f3bddd254313a9c42494b84c76b539e8ba25"
+
+[[packages]]
+name = "simplynext-backend"
+
+[packages.directory]
+path = "."
+editable = true
 
 [[packages]]
 name = "six"

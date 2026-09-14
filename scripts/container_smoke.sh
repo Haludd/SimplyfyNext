@@ -6,6 +6,10 @@ host_port="${2:-18000}"
 container_port="${3:-8000}"
 container_name="simplynext-smoke-$$"
 
+# A fresh local diagnostic capability authenticates only the metrics endpoint.
+# Pass by environment name so the token is absent from command arguments/output.
+export SIMPLYNEXT_OPERATOR_METRICS_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
 cleanup() {
   docker rm --force "${container_name}" >/dev/null 2>&1 || true
 }
@@ -19,6 +23,7 @@ docker run --detach --rm \
   --env SIMPLYNEXT_HOST=0.0.0.0 \
   --env SIMPLYNEXT_BEDROCK_ENABLED=false \
   --env SIMPLYNEXT_ANTHROPIC_ENABLED=false \
+  --env SIMPLYNEXT_OPERATOR_METRICS_TOKEN \
   --env SIMPLYNEXT_RECOGNITION_LANGUAGE=sgsl \
   --env SIMPLYNEXT_LATTICE_CLASSIFIER_ID=temporal_classifier \
   --env SIMPLYNEXT_LATTICE_CLASSIFIER_VERSION=1.3.0 \
@@ -58,6 +63,8 @@ python scripts/protocol_smoke.py \
   --calibration-version temperature_v2 \
   --vocabulary-version sgsl_demo_v1 \
   --expect-agent-source deterministic_template
+
+python scripts/room_protocol_smoke.py --base-url "http://127.0.0.1:${host_port}"
 
 docker stop --time 30 "${container_name}" >/dev/null
 echo "Container health, protocol, and graceful-stop smoke passed"

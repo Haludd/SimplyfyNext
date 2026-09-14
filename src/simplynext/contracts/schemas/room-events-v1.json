@@ -1,0 +1,704 @@
+{
+  "$defs": {
+    "AcceptedMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "sender_id": {
+          "format": "uuid",
+          "title": "Sender Id",
+          "type": "string"
+        },
+        "client_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Client Sequence",
+          "type": "integer"
+        },
+        "server_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Server Sequence",
+          "type": "integer"
+        },
+        "context_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "sign",
+            "text",
+            "speech"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "const": "accepted",
+          "default": "accepted",
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "translation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptedOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "message_id",
+        "sender_id",
+        "client_sequence",
+        "server_sequence",
+        "context_version",
+        "source",
+        "text"
+      ],
+      "title": "AcceptedMessage",
+      "type": "object"
+    },
+    "AcceptedOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "accepted",
+          "default": "accepted",
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "tts_text": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tts Text"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "confidence_kind": {
+          "const": "normalized_model_score",
+          "default": "normalized_model_score",
+          "title": "Confidence Kind",
+          "type": "string"
+        },
+        "model_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Model Version",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "confidence",
+        "model_version",
+        "policy_version"
+      ],
+      "title": "AcceptedOutcome",
+      "type": "object"
+    },
+    "ActivityEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "activity",
+          "default": "activity",
+          "title": "Type",
+          "type": "string"
+        },
+        "participant_id": {
+          "format": "uuid",
+          "title": "Participant Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "idle",
+            "typing",
+            "listening",
+            "signing"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_version",
+        "participant_id",
+        "state"
+      ],
+      "title": "ActivityEvent",
+      "type": "object"
+    },
+    "MessageUpsert": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "message_upsert",
+          "default": "message_upsert",
+          "title": "Type",
+          "type": "string"
+        },
+        "message": {
+          "discriminator": {
+            "mapping": {
+              "accepted": "#/$defs/AcceptedMessage",
+              "processing": "#/$defs/ProcessingMessage",
+              "repair": "#/$defs/RepairMessage"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ProcessingMessage"
+            },
+            {
+              "$ref": "#/$defs/AcceptedMessage"
+            },
+            {
+              "$ref": "#/$defs/RepairMessage"
+            }
+          ],
+          "title": "Message"
+        }
+      },
+      "required": [
+        "room_version",
+        "message"
+      ],
+      "title": "MessageUpsert",
+      "type": "object"
+    },
+    "ParticipantView": {
+      "additionalProperties": false,
+      "properties": {
+        "participant_id": {
+          "format": "uuid",
+          "title": "Participant Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "signer",
+            "hearing"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "alias": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Alias",
+          "type": "string"
+        },
+        "online": {
+          "title": "Online",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "participant_id",
+        "role",
+        "alias",
+        "online"
+      ],
+      "title": "ParticipantView",
+      "type": "object"
+    },
+    "Pong": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "pong",
+          "default": "pong",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_version"
+      ],
+      "title": "Pong",
+      "type": "object"
+    },
+    "PresenceEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "presence",
+          "default": "presence",
+          "title": "Type",
+          "type": "string"
+        },
+        "participant": {
+          "$ref": "#/$defs/ParticipantView"
+        }
+      },
+      "required": [
+        "room_version",
+        "participant"
+      ],
+      "title": "PresenceEvent",
+      "type": "object"
+    },
+    "ProcessingMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "sender_id": {
+          "format": "uuid",
+          "title": "Sender Id",
+          "type": "string"
+        },
+        "client_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Client Sequence",
+          "type": "integer"
+        },
+        "server_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Server Sequence",
+          "type": "integer"
+        },
+        "context_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "source": {
+          "const": "sign",
+          "default": "sign",
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "const": "processing",
+          "default": "processing",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "sender_id",
+        "client_sequence",
+        "server_sequence",
+        "context_version"
+      ],
+      "title": "ProcessingMessage",
+      "type": "object"
+    },
+    "RepairMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "sender_id": {
+          "format": "uuid",
+          "title": "Sender Id",
+          "type": "string"
+        },
+        "client_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Client Sequence",
+          "type": "integer"
+        },
+        "server_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Server Sequence",
+          "type": "integer"
+        },
+        "context_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "source": {
+          "const": "sign",
+          "default": "sign",
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "const": "repair",
+          "default": "repair",
+          "title": "Status",
+          "type": "string"
+        },
+        "repair": {
+          "$ref": "#/$defs/RepairOutcome"
+        }
+      },
+      "required": [
+        "message_id",
+        "sender_id",
+        "client_sequence",
+        "server_sequence",
+        "context_version",
+        "repair"
+      ],
+      "title": "RepairMessage",
+      "type": "object"
+    },
+    "RepairOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "repair",
+          "default": "repair",
+          "title": "Status",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "ask_repeat",
+            "offer_alternatives",
+            "request_fingerspelling",
+            "ask_type",
+            "escalate_human_interpreter"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "prompt": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "reason_code": {
+          "enum": [
+            "policy_unconfigured",
+            "unsupported_vocabulary",
+            "low_score",
+            "ambiguous_words",
+            "unresolved_content",
+            "unsupported_detail",
+            "invalid_alignment",
+            "unnatural_sentence",
+            "context_conflict",
+            "invalid_output",
+            "provider_failure",
+            "timeout",
+            "cancelled",
+            "capacity",
+            "revision_exhausted"
+          ],
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "target_indices": {
+          "default": [],
+          "items": {
+            "maximum": 63,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 64,
+          "title": "Target Indices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "prompt",
+        "reason_code"
+      ],
+      "title": "RepairOutcome",
+      "type": "object"
+    },
+    "RoomEnded": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "room_ended",
+          "default": "room_ended",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_version"
+      ],
+      "title": "RoomEnded",
+      "type": "object"
+    },
+    "RoomError": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "resync_required",
+            "invalid_control",
+            "rate_limited"
+          ],
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_version",
+        "code"
+      ],
+      "title": "RoomError",
+      "type": "object"
+    },
+    "RoomSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "event_schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Event Schema Version",
+          "type": "string"
+        },
+        "room_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "snapshot",
+          "default": "snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "code": {
+          "pattern": "^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "active"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "context_version": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/ParticipantView"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Participants",
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "accepted": "#/$defs/AcceptedMessage",
+                "processing": "#/$defs/ProcessingMessage",
+                "repair": "#/$defs/RepairMessage"
+              },
+              "propertyName": "status"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ProcessingMessage"
+              },
+              {
+                "$ref": "#/$defs/AcceptedMessage"
+              },
+              {
+                "$ref": "#/$defs/RepairMessage"
+              }
+            ]
+          },
+          "maxItems": 300,
+          "title": "Messages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "room_version",
+        "code",
+        "state",
+        "context_version",
+        "participants",
+        "messages"
+      ],
+      "title": "RoomSnapshot",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "activity": "#/$defs/ActivityEvent",
+      "error": "#/$defs/RoomError",
+      "message_upsert": "#/$defs/MessageUpsert",
+      "pong": "#/$defs/Pong",
+      "presence": "#/$defs/PresenceEvent",
+      "room_ended": "#/$defs/RoomEnded",
+      "snapshot": "#/$defs/RoomSnapshot"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RoomSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageUpsert"
+    },
+    {
+      "$ref": "#/$defs/PresenceEvent"
+    },
+    {
+      "$ref": "#/$defs/ActivityEvent"
+    },
+    {
+      "$ref": "#/$defs/RoomEnded"
+    },
+    {
+      "$ref": "#/$defs/RoomError"
+    },
+    {
+      "$ref": "#/$defs/Pong"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://signbridge.example/schemas/room-events-v1.json"
+}

@@ -1,5 +1,12 @@
 **SIMPLYNEXT GLOSSLATTICE V1 CONTRACT**
 
+**2026-09-15 migration status:** The new room ingress is the frozen root
+[`TranslatedSignUtterance v1`](../../TRANSLATED_SIGN_UTTERANCE_V1.md), exported as a package schema
+and generated client model. [WORD_ROOM_V1.md](WORD_ROOM_V1.md) defines room v1 HTTP/events,
+version negotiation, repair continuation and the shared invalid-fixture suite. No conversion
+to the older lattice contract is performed. The following sections apply only to the retained
+legacy routes until milestone 4 cutover.
+
 # METADATA
 
 | Field | Value |

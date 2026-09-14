@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "producer": {
+    "recognizer_id": "signchat_asl_signs_onnx",
+    "recognizer_version": "signchat_asl_signs_onnx",
+    "translator_id": "asl_label_to_english",
+    "translator_version": "1.0.0",
+    "vocabulary_version": "popsign_250_en_v1",
+    "confidence_kind": "normalized_model_score"
+  },
+  "evaluation_id": "synthetic-word-eval-v1",
+  "purpose": "synthetic_evaluation",
+  "vocabulary": [
+    "I",
+    "WANT",
+    "WATER",
+    "TABLE",
+    "CLEAN",
+    "ON",
+    "PLEASE",
+    "HELP",
+    "HELLO",
+    "GO",
+    "HOME",
+    "YOU",
+    "NOT",
+    "WHAT",
+    "NAME"
+  ],
+  "min_score": 0.5,
+  "min_margin": 0.2
+}

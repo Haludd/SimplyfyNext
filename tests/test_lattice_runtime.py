@@ -21,6 +21,7 @@ TEMPLATES_PATH = Path(__file__).parents[1] / "data" / "caption_templates.example
 
 def _settings(*, templates: Path | None = TEMPLATES_PATH) -> Settings:
     return Settings(
+        _env_file=None,
         environment="test",
         allowed_origins=(),
         bedrock_enabled=False,

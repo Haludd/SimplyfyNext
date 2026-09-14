@@ -47,6 +47,7 @@ OpenCV, TensorFlow, PyTorch, and server-side landmark libraries are not backend 
 | Dependency | Constraint | Purpose |
 | :--------- | :--------- | :------ |
 | `mypy` | `>=1.13,<2` | Strict package type checking |
+| `jsonschema` | `>=4.23,<5` | Draft 2020-12 schema and UUID-format parity tests for the word handoff |
 | `pytest` | `>=8.3,<9` | Test runner |
 | `pytest-asyncio` | `>=0.24,<1` | Async session/runtime tests |
 | `ruff` | `>=0.8,<1` | Import, correctness, and style checks |
@@ -131,5 +132,6 @@ fixed or a documented exception is approved.
 | Date | Change |
 | :--- | :----- |
 | 2026-09-07 | Added direct Anthropic runtime ownership and Phase 2 Linux lock, container smoke, and release-evidence workflow. |
+| 2026-09-15 | Added development-only JSON Schema validation and its locked dependency closure; existing locked versions and production dependencies are unchanged. |
 | 2026-09-06 | Added the opt-in, payload-redacted WebSocket protocol smoke dependency. |
 | 2026-09-06 | Rewritten around the current GlossLattice-only Python package and production dependency boundary. |

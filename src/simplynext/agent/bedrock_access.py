@@ -636,6 +636,18 @@ def _conservative_input_token_bound(request: Mapping[str, Any]) -> int:
         for name in ("messages", "system", "toolConfig", "additionalModelRequestFields")
         if name in request
     }
+    metadata = request.get("requestMetadata")
+    if isinstance(metadata, Mapping) and metadata.get("simplynext_role") in {
+        "word_assembler", "word_critic",
+    }:
+        from anthropic import transform_schema
+
+        from simplynext.agent.words.state import WordDraft, WordVerdict
+
+        model = WordDraft if metadata["simplynext_role"] == "word_assembler" else WordVerdict
+        # The direct adapter also sends this schema as structured output config.
+        # Reserve for both copies; the Bedrock path conservatively over-reserves.
+        countable["word_output_schema"] = transform_schema(model)
     try:
         encoded = json.dumps(
             countable,

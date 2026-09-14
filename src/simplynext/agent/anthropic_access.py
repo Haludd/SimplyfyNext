@@ -237,6 +237,16 @@ def _structured_output_config(raw_metadata: object) -> dict[str, Any] | None:
     role = raw_metadata.get("simplynext_role")
     if not isinstance(role, str):
         return None
+    if role in {"word_assembler", "word_critic"}:
+        from anthropic import transform_schema
+
+        from simplynext.agent.words.state import WordDraft, WordVerdict
+
+        model = WordDraft if role == "word_assembler" else WordVerdict
+        # Messages.create does not transform constraints automatically. Keep the
+        # full schema in the local parser and system rules; send the SDK-supported
+        # projection to the provider grammar compiler.
+        return {"format": {"type": "json_schema", "schema": transform_schema(model)}}
     schema = {
         "assembler": _ASSEMBLER_OUTPUT_SCHEMA,
         "critic": _CRITIC_OUTPUT_SCHEMA,

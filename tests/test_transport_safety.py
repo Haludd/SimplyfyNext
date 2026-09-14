@@ -49,6 +49,7 @@ def _session_request() -> SessionCreateRequest:
 def _test_app(*, http_max_body_bytes: int = 4096):
     return create_app(
         Settings(
+            _env_file=None,
             environment="test",
             allowed_origins=(),
             bedrock_enabled=False,

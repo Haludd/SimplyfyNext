@@ -1,5 +1,29 @@
 **SIMPLYNEXT BACKEND**
 
+The 2026-09-15 word-contract implementation is documented in
+[`plan/WORD_ROOM_V1.md`](plan/WORD_ROOM_V1.md). It adds strict `TranslatedSignUtterance v1`
+ingress, authenticated two-person rooms, immediate signed admission, incremental events,
+complete room-state erasure, and the separate word assembler/critic pipeline. Milestones 1–2
+are implemented and verified locally. Milestone 0's shared artifacts are available in `client/`,
+`src/simplynext/contracts/schemas/` and `tests/fixtures/`; frontend owner sign-off and
+frontend fixture execution remain external acceptance evidence.
+
+Word confidence defaults to safe no-spend repair until a producer-evaluated profile is configured.
+For an explicitly synthetic local demo, with both hosted providers disabled:
+
+```bash
+SIMPLYNEXT_ENVIRONMENT=development \
+SIMPLYNEXT_BEDROCK_ENABLED=false SIMPLYNEXT_ANTHROPIC_ENABLED=false \
+SIMPLYNEXT_WORD_POLICY_PATH=data/word_policy.synthetic.json \
+SIMPLYNEXT_WORD_TEMPLATES_PATH=data/word_templates.example.json \
+python main.py
+python scripts/room_protocol_smoke.py --base-url http://127.0.0.1:8000 --templates
+```
+
+Production refuses the synthetic profile. Room state is process-local: use one worker and one
+replica. Summary compaction remains milestone 3. The documentation below describes the retained
+legacy lattice surface, whose coordinated removal is milestone 4; it is not the new room contract.
+
 SimplyNext is an uncertainty-aware translation backend for a client-side sign-recognition
 pipeline. The client sends compact, versioned `GlossLattice` JSON. The backend returns exactly one
 terminal outcome per accepted lattice: grounded caption/TTS text or a repair instruction. It does

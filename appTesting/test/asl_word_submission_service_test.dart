@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  test('submits only the recognized word contract to the backend', () async {
+  test('submits only the accumulated gloss contract to the backend', () async {
     Map<String, dynamic>? sent;
     final service = AslWordSubmissionService(
       endpoint: Uri.parse('http://localhost:8000/v1/recognized-signs'),
@@ -33,24 +33,25 @@ void main() {
         status: 'recognized',
         word: 'hello',
         confidence: .81,
-        modelVersion: 'jamesbustos_asl_250_809d456',
+        modelVersion: 'signchat_asl_signs_onnx',
         frameCount: 16,
         alternatives: <AslRecognitionCandidate>[
           AslRecognitionCandidate(word: 'hello', confidence: .81, rank: 1),
           AslRecognitionCandidate(word: 'please', confidence: .12, rank: 2),
         ],
       ),
+      glosses: const <String>['I', 'GO', 'SCHOOL'],
       startedAt: DateTime.utc(2026, 9, 10, 12),
       endedAt: DateTime.utc(2026, 9, 10, 12, 0, 1),
     );
 
     expect(receipt?.status, 'accepted');
-    expect(sent?['word'], 'hello');
+    expect(sent?['glosses'], <String>['I', 'GO', 'SCHOOL']);
     expect(sent?['language'], 'ASL');
     expect(sent?['source'], <String, String>{
-      'classifier_id': 'jamesbustos_asl_250',
-      'model_version': 'jamesbustos_asl_250_809d456',
-      'execution': 'browser_local',
+      'classifier_id': 'signchat_asl_signs_onnx',
+      'model_version': 'signchat_asl_signs_onnx',
+      'execution': 'browser_onnx',
     });
     expect(sent, isNot(contains('frames')));
     expect(sent, isNot(contains('landmarks')));
@@ -73,7 +74,7 @@ void main() {
           status: 'recognized',
           word: 'hello',
           confidence: .81,
-          modelVersion: 'jamesbustos_asl_250_809d456',
+          modelVersion: 'signchat_asl_signs_onnx',
           frameCount: 16,
         ),
         startedAt: DateTime.utc(2026, 9, 10),

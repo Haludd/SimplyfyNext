@@ -117,8 +117,8 @@ version control tracks — [`RIX_S5.2`](#52-what-version-control-tracks).
     *SoT for:* OpenPose repository analysis
 16. **`OPS`** — `doc/OPS_openpose_synthesis.md` · *Status:* Live
     *Contents:* Short synthesis of OpenPose and the record of its rejection; defers to `OPR`
-17. **`LAR`** — `appTesting/LOCAL_ASL_RECOGNITION.md` · *Status:* Live
-    *Contents:* James Bustos 250-sign model setup, coordinate contract, capture, and validation
+17. **`SIGNCHAT_ASL`** — `appTesting/SIGNCHAT_ASL_RECOGNITION.md` · *Status:* Live
+    *Contents:* Browser-local Signchat PopSign ONNX classifier setup and landmark contract
     *SoT for:* Browser ASL inference and capture handoff
 
 
@@ -610,3 +610,6 @@ The consequences, in order of how often they bite:
 5. **2026-09-11** · *Author:* Codex
    *Change:* Registered `LAR` for the existing browser ASL recognition guide and its updated
    coordinate, capture, personal-template, and validation contracts.
+6. **2026-09-13** · *Author:* Codex
+   *Change:* Replaced the backend-only Uni-Sign path with the browser-local Signchat PopSign
+   ONNX classifier; the active reference is now `SIGNCHAT_ASL`.

@@ -41,13 +41,14 @@ final class LandmarkStreamClientConfig {
       'BPP_DEVICE_MODEL': String.fromEnvironment('BPP_DEVICE_MODEL'),
       'BPP_DETECTOR_NAME': String.fromEnvironment('BPP_DETECTOR_NAME'),
       'BPP_DETECTOR_VERSION': String.fromEnvironment('BPP_DETECTOR_VERSION'),
-      'BPP_DETECTOR_DELEGATE': String.fromEnvironment(
-        'BPP_DETECTOR_DELEGATE',
-      ),
+      'BPP_DETECTOR_DELEGATE': String.fromEnvironment('BPP_DETECTOR_DELEGATE'),
       'BPP_SUBJECT_ID': String.fromEnvironment('BPP_SUBJECT_ID'),
     };
     final missing = values.entries
-        .where((entry) => entry.key != 'BPP_DEVICE_MODEL' && entry.key != 'BPP_SUBJECT_ID')
+        .where(
+          (entry) =>
+              entry.key != 'BPP_DEVICE_MODEL' && entry.key != 'BPP_SUBJECT_ID',
+        )
         .where((entry) => entry.value.trim().isEmpty)
         .map((entry) => entry.key)
         .toList(growable: false);
@@ -74,26 +75,38 @@ final class LandmarkStreamClientConfig {
         ),
       ),
       camera: LandmarkCameraGeometry(
-        sourceWidth: int.fromEnvironment('BPP_CAMERA_WIDTH', defaultValue: 1280),
-        sourceHeight: int.fromEnvironment('BPP_CAMERA_HEIGHT', defaultValue: 720),
+        sourceWidth: int.fromEnvironment('BPP_CAMERA_WIDTH', defaultValue: 640),
+        sourceHeight: int.fromEnvironment(
+          'BPP_CAMERA_HEIGHT',
+          defaultValue: 480,
+        ),
         rotationDegrees: int.fromEnvironment(
           'BPP_CAMERA_ROTATION_DEGREES',
           defaultValue: 0,
         ),
         mirroredInput: bool.fromEnvironment(
           'BPP_CAMERA_MIRRORED_INPUT',
-          defaultValue: true,
+          defaultValue: false,
         ),
       ),
       subjectId: _optional(values['BPP_SUBJECT_ID']) ?? 'subject-0',
       sessionTimeout: _seconds(
-        const int.fromEnvironment('BPP_SESSION_TIMEOUT_SECONDS', defaultValue: 15),
+        const int.fromEnvironment(
+          'BPP_SESSION_TIMEOUT_SECONDS',
+          defaultValue: 15,
+        ),
       ),
       connectTimeout: _seconds(
-        const int.fromEnvironment('BPP_CONNECT_TIMEOUT_SECONDS', defaultValue: 15),
+        const int.fromEnvironment(
+          'BPP_CONNECT_TIMEOUT_SECONDS',
+          defaultValue: 15,
+        ),
       ),
       responseTimeout: _seconds(
-        const int.fromEnvironment('BPP_RESPONSE_TIMEOUT_SECONDS', defaultValue: 60),
+        const int.fromEnvironment(
+          'BPP_RESPONSE_TIMEOUT_SECONDS',
+          defaultValue: 60,
+        ),
       ),
     );
   }
@@ -108,28 +121,30 @@ final class LandmarkStreamClientConfig {
   final Duration responseTimeout;
 }
 
-LandmarkStreamClientPlatform _platform(String value) => switch (value.trim().toLowerCase()) {
-  'android' => LandmarkStreamClientPlatform.android,
-  'ios' => LandmarkStreamClientPlatform.ios,
-  'test' => LandmarkStreamClientPlatform.test,
-  'web' => throw StateError(
-      'The current bearer-header WebSocket contract does not support web clients.',
-    ),
-  _ => throw StateError(
-      'BPP_CLIENT_PLATFORM must be android, ios, or test for this backend.',
-    ),
-};
+LandmarkStreamClientPlatform _platform(String value) =>
+    switch (value.trim().toLowerCase()) {
+      'android' => LandmarkStreamClientPlatform.android,
+      'ios' => LandmarkStreamClientPlatform.ios,
+      'test' => LandmarkStreamClientPlatform.test,
+      'web' => throw StateError(
+        'The current bearer-header WebSocket contract does not support web clients.',
+      ),
+      _ => throw StateError(
+        'BPP_CLIENT_PLATFORM must be android, ios, or test for this backend.',
+      ),
+    };
 
-LandmarkStreamDetectorDelegate _delegate(String value) => switch (value.trim().toLowerCase()) {
-  'cpu' => LandmarkStreamDetectorDelegate.cpu,
-  'gpu' => LandmarkStreamDetectorDelegate.gpu,
-  'nnapi' => LandmarkStreamDetectorDelegate.nnapi,
-  'core_ml' => LandmarkStreamDetectorDelegate.coreMl,
-  'unknown' => LandmarkStreamDetectorDelegate.unknown,
-  _ => throw StateError(
-      'BPP_DETECTOR_DELEGATE must be cpu, gpu, nnapi, core_ml, or unknown.',
-    ),
-};
+LandmarkStreamDetectorDelegate _delegate(String value) =>
+    switch (value.trim().toLowerCase()) {
+      'cpu' => LandmarkStreamDetectorDelegate.cpu,
+      'gpu' => LandmarkStreamDetectorDelegate.gpu,
+      'nnapi' => LandmarkStreamDetectorDelegate.nnapi,
+      'core_ml' => LandmarkStreamDetectorDelegate.coreMl,
+      'unknown' => LandmarkStreamDetectorDelegate.unknown,
+      _ => throw StateError(
+        'BPP_DETECTOR_DELEGATE must be cpu, gpu, nnapi, core_ml, or unknown.',
+      ),
+    };
 
 String? _optional(String? value) {
   final trimmed = value?.trim() ?? '';

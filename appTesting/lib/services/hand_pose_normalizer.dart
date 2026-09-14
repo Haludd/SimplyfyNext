@@ -67,6 +67,7 @@ class HandPoseNormalizer {
       faceUpperLandmarks: source.faceUpperLandmarks,
       faceMouthLandmarks: source.faceMouthLandmarks,
       subjectTracking: source.subjectTracking,
+      cameraGeometry: source.cameraGeometry,
     );
   }
 
@@ -188,6 +189,10 @@ class HandPoseNormalizer {
     List<FaceLandmark> upper,
     List<FaceLandmark> mouth,
   ) {
+    // Extra backend face points must not change the existing personal feature
+    // vector's 24 upper-face + 12 mouth slots.
+    upper = upper.take(_faceUpperCount).toList(growable: false);
+    mouth = mouth.take(_faceMouthCount).toList(growable: false);
     final landmarks = <FaceLandmark>[...upper, ...mouth];
     if (landmarks.isEmpty) {
       return List<double>.filled((_faceUpperCount + _faceMouthCount) * 4, 0);

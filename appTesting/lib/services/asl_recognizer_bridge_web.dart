@@ -3,11 +3,10 @@ import 'dart:js_interop_unsafe';
 
 import '../models/asl_recognition_models.dart';
 
-/// Calls the local JavaScript TFLite adapter. The adapter owns the full 543-point
-/// MediaPipe input inside the page and returns only a compact recognition
-/// result to Flutter.
+/// Captures a short browser landmark clip and classifies it locally with the
+/// Signchat ONNX model through ONNX Runtime Web.
 class AslRecognizerBridge {
-  bool get isSupported => globalContext['signBridgeAslRecognizer'] != null;
+  bool get isSupported => _recognizer != null;
 
   Future<void> beginCapture() => _invokeVoid('beginSignCapture');
 
@@ -26,33 +25,18 @@ class AslRecognizerBridge {
     return AslRecognitionResult.fromJson(Map<String, dynamic>.from(decoded));
   }
 
-  /// Saves an explicitly approved correction for the most recently completed
-  /// capture in browser storage. The JavaScript adapter keeps the normalized
-  /// landmark signature local; Flutter receives only this compact receipt.
+  /// Kept for API compatibility with the older correction UI. The classifier
+  /// uses its shipped browser model, so browser-local templates are not used.
   Future<AslPersonalTemplateReceipt?> teachLastCapture(String label) async {
-    final recognizer = _recognizer;
-    if (recognizer == null) return null;
-    final promise = recognizer.callMethodVarArgs<JSPromise<JSAny?>>(
-      'teachLastCapture'.toJS,
-      <JSAny?>[label.toJS],
-    );
-    final raw = await promise.toDart;
-    final decoded = raw?.dartify();
-    if (decoded is! Map) return null;
-    return AslPersonalTemplateReceipt.fromJson(
-      Map<String, dynamic>.from(decoded),
-    );
-  }
-
-  void dispose() {
-    // The page-level TFLite session is deliberately cached across Flutter widget
-    // rebuilds. reset() discards only an unfinished signer capture.
+    return null;
   }
 
   JSObject? get _recognizer {
-    final value = globalContext['signBridgeAslRecognizer'];
+    final value = globalContext['signBridgeLocalAslClassifier'];
     return value?.isA<JSObject>() == true ? value as JSObject : null;
   }
+
+  void dispose() {}
 
   Future<void> _invokeVoid(String method) async {
     final recognizer = _recognizer;

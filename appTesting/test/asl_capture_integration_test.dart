@@ -21,7 +21,7 @@ const _hello = AslRecognitionResult(
   status: 'recognized',
   word: 'hello',
   confidence: .91,
-  modelVersion: 'jamesbustos_asl_250_809d456',
+  modelVersion: 'signchat_asl_signs_onnx',
   frameCount: 25,
 );
 
@@ -160,6 +160,30 @@ void main() {
       await pending;
       expect(controller.visibleAnalysis, isNull);
       expect(controller.analysisInFlight, isFalse);
+    },
+  );
+
+  test(
+    'automatic local capture restarts while its previous result is pending',
+    () async {
+      final (controller, tracking, bridge) = await _controller();
+      addTearDown(controller.dispose);
+      bridge.pending = Completer<AslRecognitionResult?>();
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      final first = controller.analyzeSign(automatic: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.analysisInFlight, isTrue);
+
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await Future<void>.delayed(Duration.zero);
+      expect(tracking.isCapturingSign, isTrue);
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+
+      bridge.pending!.complete(_hello);
+      await first;
+      expect(tracking.isCapturingSign, isTrue);
+      expect(controller.visibleAnalysis?.caption, 'hello');
     },
   );
 }

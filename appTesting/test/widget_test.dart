@@ -27,7 +27,7 @@ void main() {
 
     expect(find.text('Live translator'), findsOneWidget);
     expect(find.text('Open camera'), findsOneWidget);
-    expect(find.text('My signs'), findsNothing);
+    expect(find.text('My signs'), findsOneWidget);
     expect(find.text('Settings'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -56,9 +56,9 @@ void main() {
         <String, dynamic>{'word': 'hello', 'confidence': .81},
         <String, dynamic>{'word': 'please', 'confidence': .12},
       ],
-      modelVersion: 'jamesbustos_asl_250_809d456',
+      modelVersion: 'signchat_asl_signs_onnx',
     );
-    controller.backendStatus = 'Word sent to backend · accepted';
+    controller.backendStatus = 'Glosses sent to backend · accepted';
 
     await tester.pumpWidget(SignBridgeApp(controller: controller));
     await tester.pumpAndSettle();
@@ -73,7 +73,7 @@ void main() {
     );
     expect(find.text('HELLO'), findsOneWidget);
     expect(find.text('hello 81%  ·  please 12%'), findsOneWidget);
-    expect(find.text('Word sent to backend · accepted'), findsOneWidget);
+    expect(find.text('Glosses sent to backend · accepted'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

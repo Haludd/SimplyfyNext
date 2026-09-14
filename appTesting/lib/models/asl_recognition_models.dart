@@ -1,4 +1,4 @@
-/// A browser-local temporal ASL model result.
+/// A browser-local ONNX result for one isolated ASL clip.
 ///
 /// Landmark frames and camera images are intentionally absent. This is the
 /// compact result that may cross the frontend/backend boundary.
@@ -59,8 +59,8 @@ final class AslRecognitionResult {
   }
 }
 
-/// Receipt for an explicit, browser-local correction of the most recent ASL
-/// motion capture. It contains neither camera data nor landmarks.
+/// Legacy receipt kept for stored personal vocabulary data. It is not used by
+/// the local ASL recognition path.
 final class AslPersonalTemplateReceipt {
   const AslPersonalTemplateReceipt({
     required this.status,

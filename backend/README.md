@@ -1,17 +1,15 @@
 # SignBridge backend
 
-This is the local backend for the Flutter tracking contract. The sign-sequence
-endpoint still uses only Python's standard library. The optional emotion
-endpoint uses HSEmotion's EfficientNet ONNX model for fast facial-expression
-recognition, falls back to the OpenCV + DeepFace adapter if needed, and also
-runs the normal sign-sequence analysis endpoint.
+This is the optional local backend for tracking and sentence/gloss submission.
+ASL word recognition runs locally in the browser with the Signchat ONNX model;
+the browser does not need this service for recognition.
 
 ## Run it
 
 From the repository root:
 
 ```bash
-python3 backend/run.py
+python3 backend/recognized_words_api.py
 ```
 
 To enable face-expression analysis, install the model dependencies first:
@@ -26,8 +24,7 @@ The API listens on `http://127.0.0.1:8000`:
 
 ```text
 GET  /health
-POST /v1/sign-sequences/analyze
-POST /v1/emotions/analyze  (JPEG or PNG body)
+POST /v1/recognized-signs  (compact glosses[] JSON)
 ```
 
 Live landmark coordinates are streamed over a WebSocket on
@@ -61,11 +58,8 @@ flutter run -d chrome \
   --dart-define=SIGNBRIDGE_API_URL=http://127.0.0.1:8000
 ```
 
-The server validates the sequence, keeps a JSONL copy under
-`backend/data/sign_sequences.jsonl`, and returns a deliberately conservative
-handshape candidate. It does not claim to translate ASL yet. The analyzer is a
-replaceable library class: a trained temporal model can implement the same
-`SignAnalyzer.analyze()` contract later.
+The browser ASL model setup is documented in
+[`appTesting/SIGNCHAT_ASL_RECOGNITION.md`](../appTesting/SIGNCHAT_ASL_RECOGNITION.md).
 
 The stored payload includes the four landmark worlds, hand world coordinates
 when the browser provides them, hand geometry, motion, and facial expression

@@ -18,6 +18,7 @@ import 'services/sign_analysis_service.dart';
 import 'services/state_normalised_tracking_service.dart';
 import 'services/tracking_service.dart';
 import 'services/web_tracking_service.dart';
+import 'ui/camera_overlay_projection.dart';
 import 'ui/web_camera_preview.dart';
 
 const _background = Color(0xFF07111F);
@@ -29,6 +30,26 @@ const _yellow = Color(0xFFFFC857);
 const _red = Color(0xFFFF718A);
 const _muted = Color(0xFF91A6B8);
 const _subtle = Color(0xFF657B8D);
+
+// Keep the camera overlay on the same accents used by the SignBridge UI.
+// Status warnings retain _yellow; detected landmarks use only these two
+// high-contrast UI accents so they are easy to follow against the preview.
+const _trackingPrimary = _cyan;
+const _trackingSecondary = _mint;
+
+bool _isRenderablePoint(double x, double y, double visibility) =>
+    visibility >= .35 &&
+    x.isFinite &&
+    y.isFinite &&
+    x >= 0 &&
+    x <= 1 &&
+    y >= 0 &&
+    y <= 1;
+
+NormalizedPoint? _renderablePoint(NormalizedPoint? point) =>
+    point != null && _isRenderablePoint(point.x, point.y, point.visibility)
+    ? point
+    : null;
 
 Color _confidenceColor(Color base, double confidence, {double floor = .12}) =>
     base.withValues(
@@ -496,6 +517,7 @@ class OnboardingScreen extends StatelessWidget {
             TrackingPreview(
               controller: controller,
               height: 300,
+              aspectRatio: 4 / 3,
               showLabels: true,
               showCalibrationGuide: true,
             ),
@@ -592,12 +614,17 @@ class TrackingPreview extends StatelessWidget {
     super.key,
     required this.controller,
     this.height = 390,
+    this.aspectRatio,
     this.showLabels = false,
     this.showCalibrationGuide = false,
     this.showLiveOverlay = false,
   });
   final AppController controller;
   final double height;
+
+  /// The web camera requests a 4:3 stream. Matching that shape prevents the
+  /// `object-fit: cover` video from cropping the signer's head or hands.
+  final double? aspectRatio;
   final bool showLabels;
   final bool showCalibrationGuide;
   final bool showLiveOverlay;
@@ -605,46 +632,58 @@ class TrackingPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(14),
-    child: SizedBox(
-      height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          if (controller.devices.cameraReady)
-            kIsWeb
-                ? WebCameraPreview()
-                : CameraPreview(controller.devices.cameraController!)
-          else
-            const CustomPaint(painter: _PreviewBackgroundPainter()),
-          if (controller.viewMode != ViewMode.raw &&
-              controller.devices.cameraReady)
-            CustomPaint(
-              painter: LandmarkPainter(
-                controller.latestFrame,
-                showCalibrationGuide: showCalibrationGuide,
-              ),
-            ),
-          if (controller.viewMode == ViewMode.wireframe &&
-              controller.devices.cameraReady)
-            CustomPaint(painter: HandSkeletonPainter(controller.latestFrame)),
-          if (showLabels)
-            const Positioned(
-              left: 15,
-              top: 14,
-              child: Text(
-                'CALIBRATION VIEW',
-                style: TextStyle(
-                  color: Color(0xB3DDFBFC),
-                  fontSize: 9,
-                  letterSpacing: 1.2,
-                  fontFamily: 'monospace',
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final previewHeight =
+            aspectRatio != null && constraints.maxWidth.isFinite
+            ? constraints.maxWidth / aspectRatio!
+            : height;
+        return SizedBox(
+          height: previewHeight,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if (controller.devices.cameraReady)
+                kIsWeb
+                    ? WebCameraPreview()
+                    : CameraPreview(controller.devices.cameraController!)
+              else
+                const CustomPaint(painter: _PreviewBackgroundPainter()),
+              if (controller.viewMode != ViewMode.raw &&
+                  controller.devices.cameraReady)
+                CustomPaint(
+                  painter: LandmarkPainter(
+                    controller.latestFrame,
+                    showCalibrationGuide: showCalibrationGuide,
+                  ),
                 ),
-              ),
-            ),
-          if (showLiveOverlay)
-            Positioned.fill(child: _LivePreviewOverlay(controller: controller)),
-        ],
-      ),
+              if (controller.viewMode == ViewMode.wireframe &&
+                  controller.devices.cameraReady)
+                CustomPaint(
+                  painter: HandSkeletonPainter(controller.latestFrame),
+                ),
+              if (showLabels)
+                const Positioned(
+                  left: 15,
+                  top: 14,
+                  child: Text(
+                    'CALIBRATION VIEW',
+                    style: TextStyle(
+                      color: Color(0xB3DDFBFC),
+                      fontSize: 9,
+                      letterSpacing: 1.2,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              if (showLiveOverlay)
+                Positioned.fill(
+                  child: _LivePreviewOverlay(controller: controller),
+                ),
+            ],
+          ),
+        );
+      },
     ),
   );
 }
@@ -681,8 +720,8 @@ class _LivePreviewOverlay extends StatelessWidget {
     final showBackendStatus =
         controller.isBackendConnected ||
         controller.backendStatus.startsWith('Backend') ||
-        controller.backendStatus.startsWith('Local ASL word') ||
-        controller.backendStatus.startsWith('Word sent');
+        controller.backendStatus.startsWith('Local ASL') ||
+        controller.backendStatus.startsWith('Glosses sent');
     final status = !controller.devices.cameraReady
         ? 'CAMERA OFF'
         : backendProcessing
@@ -1068,28 +1107,6 @@ class _LivePreviewOverlay extends StatelessWidget {
                             ),
                           ),
                         ],
-                        if (controller.canTeachLastAslCapture &&
-                            analysis.status == 'confident' &&
-                            analysis.modelVersion.startsWith(
-                              'jamesbustos_asl_250_',
-                            )) ...<Widget>[
-                          const SizedBox(height: 4),
-                          TextButton.icon(
-                            onPressed: () =>
-                                _showAslCorrectionDialog(context, controller),
-                            icon: const Icon(Icons.edit_outlined, size: 14),
-                            label: const Text('Wrong word? Teach it'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: _cyan,
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2,
-                                vertical: 1,
-                              ),
-                              textStyle: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -1153,49 +1170,6 @@ String _recognitionAlternativesText(List<Map<String, dynamic>> hypotheses) =>
           return '$label$percent';
         })
         .join('  ·  ');
-
-Future<void> _showAslCorrectionDialog(
-  BuildContext context,
-  AppController controller,
-) async {
-  final field = TextEditingController();
-  final label = await showDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Teach the correct word'),
-      content: TextField(
-        controller: field,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(
-          labelText: 'Correct ASL word',
-          hintText: 'For example: bye',
-          helperText: 'Saved only in this browser for similar hand motion.',
-        ),
-        onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(field.text),
-          child: const Text('Save correction'),
-        ),
-      ],
-    ),
-  );
-  field.dispose();
-
-  if (label == null || label.trim().isEmpty) return;
-  final receipt = await controller.teachLastAslCapture(label);
-  if (!context.mounted) return;
-  final message = receipt?.isStored == true
-      ? 'Saved ${receipt!.sampleCount}/5 local examples for "${receipt.label}". Sign it again and correct it a few times for a stronger match.'
-      : 'Could not save that motion. Sign it once more, then choose Teach it.';
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-}
 
 Future<void> _showBackendPayload(
   BuildContext context,
@@ -1276,63 +1250,89 @@ class LandmarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final projection = CameraOverlayProjection(
+      displaySize: size,
+      camera: frame?.cameraGeometry,
+    );
     final linePaint = Paint()
-      ..color = _cyan.withValues(alpha: .55)
+      ..color = _trackingPrimary.withValues(alpha: .55)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
-    final points = <NormalizedPoint?>[
-      frame?.leftShoulder,
-      frame?.rightShoulder,
-      frame?.leftWrist,
-      frame?.rightWrist,
-    ];
+    final leftShoulder = _renderablePoint(frame?.leftShoulder);
+    final rightShoulder = _renderablePoint(frame?.rightShoulder);
+    final leftWrist = _renderablePoint(frame?.leftWrist);
+    final rightWrist = _renderablePoint(frame?.rightWrist);
     final personDetected =
         frame != null &&
         (frame!.poseLandmarks.isNotEmpty ||
             frame!.hands.isNotEmpty ||
             frame!.faceUpperLandmarks.isNotEmpty ||
             frame!.faceMouthLandmarks.isNotEmpty);
-    if (showCalibrationGuide &&
-        personDetected &&
-        points.every((point) => point == null)) {
-      points.addAll(const <NormalizedPoint>[
-        NormalizedPoint(x: .39, y: .35),
-        NormalizedPoint(x: .61, y: .35),
-        NormalizedPoint(x: .25, y: .72),
-        NormalizedPoint(x: .75, y: .72),
-      ]);
-    }
-    final visiblePoints = points.whereType<NormalizedPoint>().toList();
-    if (visiblePoints.length >= 2) {
-      final shoulderLeft = _offset(visiblePoints[0], size);
-      final shoulderRight = _offset(visiblePoints[1], size);
+    final actualAnchorPoints = <NormalizedPoint?>[
+      leftShoulder,
+      rightShoulder,
+      leftWrist,
+      rightWrist,
+    ];
+    if (leftShoulder != null && rightShoulder != null) {
+      final shoulderLeft = projection.project(leftShoulder.x, leftShoulder.y);
+      final shoulderRight = projection.project(
+        rightShoulder.x,
+        rightShoulder.y,
+      );
       canvas.drawLine(shoulderLeft, shoulderRight, linePaint);
-      if (visiblePoints.length >= 4) {
-        canvas.drawLine(
-          shoulderLeft,
-          _offset(visiblePoints[2], size),
-          linePaint,
-        );
-        canvas.drawLine(
-          shoulderRight,
-          _offset(visiblePoints[3], size),
-          linePaint,
-        );
-      }
     }
-    for (final point in visiblePoints) {
-      final offset = _offset(point, size);
+    if (leftShoulder != null && leftWrist != null) {
+      canvas.drawLine(
+        projection.project(leftShoulder.x, leftShoulder.y),
+        projection.project(leftWrist.x, leftWrist.y),
+        linePaint,
+      );
+    }
+    if (rightShoulder != null && rightWrist != null) {
+      canvas.drawLine(
+        projection.project(rightShoulder.x, rightShoulder.y),
+        projection.project(rightWrist.x, rightWrist.y),
+        linePaint,
+      );
+    }
+    var anchorPoints = actualAnchorPoints.whereType<NormalizedPoint>().toList();
+    if (showCalibrationGuide && personDetected && anchorPoints.isEmpty) {
+      anchorPoints = <NormalizedPoint>[
+        const NormalizedPoint(x: .39, y: .35),
+        const NormalizedPoint(x: .61, y: .35),
+        const NormalizedPoint(x: .25, y: .72),
+        const NormalizedPoint(x: .75, y: .72),
+      ];
+      canvas.drawLine(
+        projection.project(anchorPoints[0].x, anchorPoints[0].y),
+        projection.project(anchorPoints[1].x, anchorPoints[1].y),
+        linePaint,
+      );
+      canvas.drawLine(
+        projection.project(anchorPoints[0].x, anchorPoints[0].y),
+        projection.project(anchorPoints[2].x, anchorPoints[2].y),
+        linePaint,
+      );
+      canvas.drawLine(
+        projection.project(anchorPoints[1].x, anchorPoints[1].y),
+        projection.project(anchorPoints[3].x, anchorPoints[3].y),
+        linePaint,
+      );
+    }
+    for (final point in anchorPoints) {
+      final offset = projection.project(point.x, point.y);
       canvas.drawCircle(
         offset,
         5,
         // A detected point stays solid on screen. Its confidence remains in
         // LandmarkFrame; the UI never turns a real point into a prediction.
-        Paint()..color = _confidenceColor(_cyan, 1),
+        Paint()..color = _confidenceColor(_trackingPrimary, 1),
       );
       canvas.drawCircle(
         offset,
         10,
-        Paint()..color = _confidenceColor(_cyan, 1, floor: .03),
+        Paint()..color = _confidenceColor(_trackingPrimary, 1, floor: .03),
       );
     }
 
@@ -1358,58 +1358,59 @@ class LandmarkPainter extends CustomPainter {
       final second = poseByIndex[edge[1]];
       if (first == null ||
           second == null ||
-          first.visibility <= 0 ||
-          second.visibility <= 0) {
+          !_isRenderablePoint(first.x, first.y, first.visibility) ||
+          !_isRenderablePoint(second.x, second.y, second.visibility)) {
         continue;
       }
       canvas.drawLine(
-        _worldOffset(first.x, first.y, size),
-        _worldOffset(second.x, second.y, size),
+        projection.project(first.x, first.y),
+        projection.project(second.x, second.y),
         Paint()
-          ..color = _confidenceColor(_cyan, 1, floor: .15)
+          ..color = _confidenceColor(_trackingPrimary, 1, floor: .15)
           ..strokeWidth = 1.2
           ..style = PaintingStyle.stroke,
       );
     }
     for (final landmark in pose) {
-      if (landmark.visibility <= 0) continue;
+      if (!_isRenderablePoint(landmark.x, landmark.y, landmark.visibility)) {
+        continue;
+      }
       canvas.drawCircle(
-        _worldOffset(landmark.x, landmark.y, size),
+        projection.project(landmark.x, landmark.y),
         3.5,
-        Paint()..color = _confidenceColor(_cyan, 1),
+        Paint()..color = _confidenceColor(_trackingPrimary, 1),
       );
     }
 
-    // Face points use different colours so it is obvious which points belong
-    // to the upper-face and mouth worlds.
+    // Face points use the same two UI accents as the pose and hand worlds.
     for (final landmark
         in frame?.faceUpperLandmarks ?? const <FaceLandmark>[]) {
-      if (landmark.visibility <= 0) continue;
+      if (!_isRenderablePoint(landmark.x, landmark.y, landmark.visibility)) {
+        continue;
+      }
       canvas.drawCircle(
-        _worldOffset(landmark.x, landmark.y, size),
+        projection.project(landmark.x, landmark.y),
         2.5,
-        Paint()..color = _confidenceColor(_yellow, 1),
+        Paint()..color = _confidenceColor(_trackingPrimary, 1),
       );
     }
     for (final landmark
         in frame?.faceMouthLandmarks ?? const <FaceLandmark>[]) {
-      if (landmark.visibility <= 0) continue;
+      if (!_isRenderablePoint(landmark.x, landmark.y, landmark.visibility)) {
+        continue;
+      }
       canvas.drawCircle(
-        _worldOffset(landmark.x, landmark.y, size),
+        projection.project(landmark.x, landmark.y),
         2.5,
-        Paint()..color = _confidenceColor(_mint, 1),
+        Paint()..color = _confidenceColor(_trackingSecondary, 1),
       );
     }
   }
 
-  Offset _offset(NormalizedPoint point, Size size) =>
-      Offset((1 - point.x) * size.width, point.y * size.height);
-
-  Offset _worldOffset(double x, double y, Size size) =>
-      Offset((1 - x) * size.width, y * size.height);
   @override
   bool shouldRepaint(covariant LandmarkPainter oldDelegate) =>
-      oldDelegate.frame != frame;
+      oldDelegate.frame != frame ||
+      oldDelegate.showCalibrationGuide != showCalibrationGuide;
 }
 
 class HandSkeletonPainter extends CustomPainter {
@@ -1418,17 +1419,26 @@ class HandSkeletonPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final projection = CameraOverlayProjection(
+      displaySize: size,
+      camera: frame?.cameraGeometry,
+    );
     final hands = frame?.hands ?? const <TrackedHand>[];
     for (final hand in hands) {
-      final color = hand.handedness == Handedness.left ? _mint : _cyan;
+      final color = hand.handedness == Handedness.left
+          ? _trackingSecondary
+          : _trackingPrimary;
       for (final edge in handLandmarkEdges) {
         if (edge.any((index) => index >= hand.landmarks.length)) continue;
         final first = hand.landmarks[edge[0]];
         final second = hand.landmarks[edge[1]];
-        if (first.visibility <= 0 || second.visibility <= 0) continue;
+        if (!_isRenderablePoint(first.x, first.y, first.visibility) ||
+            !_isRenderablePoint(second.x, second.y, second.visibility)) {
+          continue;
+        }
         canvas.drawLine(
-          _project(first, size),
-          _project(second, size),
+          projection.project(first.x, first.y),
+          projection.project(second.x, second.y),
           Paint()
             ..color = _confidenceColor(color, 1, floor: .2)
             ..strokeWidth = 2
@@ -1436,8 +1446,10 @@ class HandSkeletonPainter extends CustomPainter {
         );
       }
       for (final landmark in hand.landmarks) {
-        if (landmark.visibility <= 0) continue;
-        final point = _project(landmark, size);
+        if (!_isRenderablePoint(landmark.x, landmark.y, landmark.visibility)) {
+          continue;
+        }
+        final point = projection.project(landmark.x, landmark.y);
         final radius = (4.5 - landmark.z.abs() * 8).clamp(2.5, 5.5);
         canvas.drawCircle(
           point,
@@ -1452,11 +1464,6 @@ class HandSkeletonPainter extends CustomPainter {
       }
     }
   }
-
-  Offset _project(HandLandmark landmark, Size size) => Offset(
-    (1 - landmark.x - landmark.z * .12) * size.width,
-    (landmark.y - landmark.z * .08) * size.height,
-  );
 
   @override
   bool shouldRepaint(covariant HandSkeletonPainter oldDelegate) =>
@@ -1538,6 +1545,7 @@ class LiveTranslatorScreen extends StatelessWidget {
                 TrackingPreview(
                   controller: controller,
                   height: 410,
+                  aspectRatio: 4 / 3,
                   showLiveOverlay: true,
                 ),
               ],
@@ -1993,12 +2001,22 @@ class _ActionDock extends StatelessWidget {
           onTap: controller.clearCaption,
         ),
         _DockAction(
-          icon: Icons.bolt,
-          label: 'Quick phrases',
-          value: '',
-          accent: _yellow,
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Quick phrases opened.')),
+          icon: Icons.sign_language_outlined,
+          label: 'My signs',
+          value: '${controller.customSigns.length}',
+          accent: _cyan,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => Scaffold(
+                appBar: AppBar(
+                  title: const Text(
+                    'My signs',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                body: DictionaryScreen(controller: controller),
+              ),
+            ),
           ),
         ),
       ],
@@ -2198,7 +2216,7 @@ class _SignCard extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: Text(
-                '${sign.language} · ${sign.samples.length}/5 samples',
+                '${sign.language} · ${sign.sampleCount}/5 recordings',
                 style: const TextStyle(color: _muted, fontSize: 11),
               ),
             ),
@@ -2215,7 +2233,7 @@ class _SignCard extends StatelessWidget {
         const SizedBox(height: 9),
         Text(
           sign.hasEnoughSamples
-              ? 'Hand coordinates + face signal stored for matching.'
+              ? 'Landmark motion templates stored for on-device matching.'
               : 'More live samples are needed before recognition.',
           style: const TextStyle(color: _subtle, fontSize: 10, height: 1.4),
         ),
@@ -2283,7 +2301,7 @@ class CustomSignFlowScreen extends StatefulWidget {
 
 class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
   final TextEditingController _labelController = TextEditingController();
-  final List<List<double>> _samples = <List<double>>[];
+  final List<List<List<double>>> _samples = <List<List<double>>>[];
   bool _recording = false;
   bool _saved = false;
   String? _error;
@@ -2381,7 +2399,7 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'This is personal vocabulary, not an official sign-language dictionary entry. We store landmark sequences from five valid examples.',
+                    'This is personal vocabulary, not an official sign-language dictionary entry. Five landmark recordings stay on this device and are used for local matching.',
                     style: TextStyle(color: _muted, fontSize: 13, height: 1.5),
                   ),
                   const SizedBox(height: 22),
@@ -2397,6 +2415,7 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                   TrackingPreview(
                     controller: controller,
                     height: 340,
+                    aspectRatio: 4 / 3,
                     showLabels: true,
                   ),
                   const SizedBox(height: 15),
@@ -2417,6 +2436,20 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                     Text(
                       _error!,
                       style: const TextStyle(color: _red, fontSize: 11),
+                    ),
+                  ],
+                  if (_recording) ...<Widget>[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'RECORDING — perform the sign now',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _red,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'monospace',
+                        letterSpacing: .7,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 18),
@@ -2473,7 +2506,7 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                     const Padding(
                       padding: EdgeInsets.only(top: 10),
                       child: Text(
-                        'Now perform the same sign again. Repeat this movement five times so the model has enough landmark data.',
+                        'Repeat the same movement five times. The app compares its landmark motion pattern locally; it does not retrain the shared 250-word model.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: _muted, fontSize: 11),
                       ),
@@ -2497,19 +2530,26 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
       _recording = true;
       _error = null;
     });
-    await Future<void>.delayed(const Duration(seconds: 1));
-    final sample = controller.captureCurrentSignSample();
-    if (sample == null) {
+    final startedAt = DateTime.now();
+    controller.setPersonalSignRecording(true);
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      final sample = controller.capturePersonalSignSequence(startedAt);
+      if (!mounted) return;
+      if (sample == null) {
+        setState(() {
+          _recording = false;
+          _error = 'We need a clear 1.6-second landmark recording. Keep a hand and both shoulders in frame, then repeat it.';
+        });
+        return;
+      }
       setState(() {
+        _samples.add(sample);
         _recording = false;
-        _error = 'This sample was not clear enough. Reposition yourself and repeat it.';
       });
-      return;
+    } finally {
+      controller.setPersonalSignRecording(false);
     }
-    setState(() {
-      _samples.add(sample);
-      _recording = false;
-    });
   }
 }
 

@@ -17,7 +17,6 @@ abstract class TrackingService {
   Future<List<LandmarkFrame>> finishUtterance();
   void ingest(LandmarkFrame frame);
   void dispose();
-
 }
 
 // Sign-by-sign aliases. These are extensions so existing TrackingService
@@ -115,6 +114,9 @@ class DemoTrackingService implements TrackingService {
   Future<List<LandmarkFrame>> finishUtterance() async {
     final frames = List<LandmarkFrame>.unmodifiable(_utteranceFrames);
     _utteranceFrames.clear();
+    // Keep the demo implementation aligned with production tracking: each
+    // word starts with no raw-frame history from the previous word.
+    _recentFrames.clear();
     _capturingUtterance = false;
     _status = 'Demo tracking · ready for next sign';
     return frames;

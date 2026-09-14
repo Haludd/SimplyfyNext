@@ -7,10 +7,7 @@ import '../models/tracking_models.dart';
 /// fixed landmark-stream layout. The server owns normalisation, segmentation,
 /// and classification; this adapter only preserves coordinates and quality.
 final class LandmarkBatchEncoder {
-  LandmarkBatchEncoder({
-    required this.camera,
-    this.subjectId = 'subject-0',
-  }) {
+  LandmarkBatchEncoder({required this.camera, this.subjectId = 'subject-0'}) {
     if (camera.sourceWidth < 1 || camera.sourceHeight < 1) {
       throw ArgumentError('camera dimensions must be positive');
     }
@@ -20,7 +17,17 @@ final class LandmarkBatchEncoder {
     if (subjectId.trim().isEmpty) throw ArgumentError('subjectId is required');
   }
 
-  static const List<int> _poseIndices = <int>[0, 11, 12, 13, 14, 15, 16, 23, 24];
+  static const List<int> _poseIndices = <int>[
+    0,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    23,
+    24,
+  ];
   static const List<int> _faceIndices = <int>[
     1,
     152,
@@ -59,11 +66,21 @@ final class LandmarkBatchEncoder {
     if (frames.length > 32) {
       throw ArgumentError('frames cannot contain more than 32 items');
     }
+    final captureCamera = frames.first.cameraGeometry ?? camera;
+    for (final frame in frames) {
+      final geometry = frame.cameraGeometry ?? camera;
+      if (geometry.sourceWidth != captureCamera.sourceWidth ||
+          geometry.sourceHeight != captureCamera.sourceHeight ||
+          geometry.rotationDegrees != captureCamera.rotationDegrees ||
+          geometry.mirroredInput != captureCamera.mirroredInput) {
+        throw ArgumentError('A landmark batch must use one camera geometry');
+      }
+    }
     final encoded = frames.map(_encodeFrame).toList(growable: false);
     return LandmarkBatch(
       sessionId: sessionId,
       batchSeq: _batchSeq++,
-      camera: camera,
+      camera: captureCamera,
       frames: encoded,
       droppedBefore: droppedBefore,
     );
@@ -72,7 +89,8 @@ final class LandmarkBatchEncoder {
   Map<String, dynamic> _encodeFrame(LandmarkFrame frame) {
     final captureMs = _captureMs(frame.timestamp);
     final lockedSubject = frame.subjectTracking?.locked == true;
-    final hasSubjectPoints = frame.hands.isNotEmpty || frame.poseLandmarks.isNotEmpty;
+    final hasSubjectPoints =
+        frame.hands.isNotEmpty || frame.poseLandmarks.isNotEmpty;
     return <String, dynamic>{
       'seq': _frameSeq++,
       'capture_ms': captureMs,
@@ -113,25 +131,18 @@ final class LandmarkBatchEncoder {
   List<List<double>>? _hand(List<TrackedHand> hands, Handedness side) {
     final hand = _findHand(hands, side);
     if (hand == null || hand.landmarks.length < 21) return null;
-    return List<List<double>>.generate(
-      21,
-      (index) {
-        final point = hand.landmarks[index];
-        return <double>[
-          _coordinate(point.x),
-          _coordinate(point.y),
-          _depth(point.z),
-          _confidence(point.visibility),
-        ];
-      },
-      growable: false,
-    );
+    return List<List<double>>.generate(21, (index) {
+      final point = hand.landmarks[index];
+      return <double>[
+        _coordinate(point.x),
+        _coordinate(point.y),
+        _depth(point.z),
+        _confidence(point.visibility),
+      ];
+    }, growable: false);
   }
 
-  List<List<double>> _face(
-    List<FaceLandmark> upper,
-    List<FaceLandmark> mouth,
-  ) {
+  List<List<double>> _face(List<FaceLandmark> upper, List<FaceLandmark> mouth) {
     final byIndex = <int, FaceLandmark>{
       for (final point in <FaceLandmark>[...upper, ...mouth])
         point.index: point,

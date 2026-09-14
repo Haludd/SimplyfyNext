@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../contracts/landmark_stream.dart';
+
 import 'hand_coordinate_analysis.dart';
 import 'hand_tracking_models.dart';
 import 'face_tracking_models.dart';
@@ -40,6 +42,7 @@ class LandmarkFrame {
     this.faceUpperLandmarks = const <FaceLandmark>[],
     this.faceMouthLandmarks = const <FaceLandmark>[],
     this.subjectTracking,
+    this.cameraGeometry,
     this.trackingState,
     this.normalisation,
   });
@@ -63,6 +66,7 @@ class LandmarkFrame {
   final List<FaceLandmark> faceUpperLandmarks;
   final List<FaceLandmark> faceMouthLandmarks;
   final SubjectTracking? subjectTracking;
+  final LandmarkCameraGeometry? cameraGeometry;
 
   /// Runtime-only Stage 3 result. It is deliberately excluded from [toJson]
   /// so the raw LandmarkFrame wire schema stays unchanged.
@@ -99,10 +103,12 @@ class LandmarkFrame {
     List<FaceLandmark>? faceUpperLandmarks,
     List<FaceLandmark>? faceMouthLandmarks,
     Object? subjectTracking = _notProvided,
+    LandmarkCameraGeometry? cameraGeometry,
     Object? trackingState = _notProvided,
     Object? normalisation = _notProvided,
   }) => LandmarkFrame(
     timestamp: timestamp ?? this.timestamp,
+    cameraGeometry: cameraGeometry ?? this.cameraGeometry,
     leftShoulder: identical(leftShoulder, _notProvided)
         ? this.leftShoulder
         : leftShoulder as NormalizedPoint?,
@@ -368,6 +374,7 @@ class CustomSign {
     required this.label,
     required this.samples,
     required this.createdAt,
+    this.sequences = const <List<List<double>>>[],
     this.language = 'ASL',
     this.vectorSize = 0,
     this.coordinateSpace = 'normalized_3d',
@@ -375,18 +382,33 @@ class CustomSign {
   });
 
   final String label;
+
+  /// One representative vector for each recorded example. This is retained
+  /// for compatibility with entries recorded by earlier builds.
   final List<List<double>> samples;
+
+  /// The ordered landmark vectors for each recorded example. New personal
+  /// signs use this to preserve movement; legacy snapshot-only entries are
+  /// exposed as one-frame sequences by [templateSequences].
+  final List<List<List<double>>> sequences;
   final DateTime createdAt;
   final String language;
   final int vectorSize;
   final String coordinateSpace;
   final String faceSignal;
 
-  bool get hasEnoughSamples => samples.length >= 5;
+  List<List<List<double>>> get templateSequences => sequences.isNotEmpty
+      ? sequences
+      : samples.map((sample) => <List<double>>[sample]).toList(growable: false);
+
+  int get sampleCount => templateSequences.length;
+
+  bool get hasEnoughSamples => sampleCount >= 5;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'label': label,
     'samples': samples,
+    if (sequences.isNotEmpty) 'sequences': sequences,
     'createdAt': createdAt.toIso8601String(),
     'language': language,
     'vector_size': vectorSize,
@@ -394,19 +416,48 @@ class CustomSign {
     'face_signal': faceSignal,
   };
 
-  factory CustomSign.fromJson(Map<String, dynamic> json) => CustomSign(
-    label: json['label'] as String,
-    samples: (json['samples'] as List<dynamic>)
-        .map(
-          (sample) => (sample as List<dynamic>)
-              .map((value) => (value as num).toDouble())
-              .toList(),
-        )
-        .toList(),
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    language: json['language'] as String? ?? 'ASL',
-    vectorSize: (json['vector_size'] as num?)?.toInt() ?? 0,
-    coordinateSpace: json['coordinate_space'] as String? ?? 'normalized_3d',
-    faceSignal: json['face_signal'] as String? ?? 'not captured',
-  );
+  factory CustomSign.fromJson(Map<String, dynamic> json) {
+    final rawSamples = json['samples'];
+    final samples = rawSamples is List
+        ? rawSamples
+              .whereType<List>()
+              .map(
+                (sample) => sample
+                    .whereType<num>()
+                    .map((value) => value.toDouble())
+                    .toList(growable: false),
+              )
+              .where((sample) => sample.isNotEmpty)
+              .toList(growable: false)
+        : const <List<double>>[];
+    final rawSequences = json['sequences'];
+    final sequences = rawSequences is List
+        ? rawSequences
+              .whereType<List>()
+              .map(
+                (sequence) => sequence
+                    .whereType<List>()
+                    .map(
+                      (frame) => frame
+                          .whereType<num>()
+                          .map((value) => value.toDouble())
+                          .toList(growable: false),
+                    )
+                    .where((frame) => frame.isNotEmpty)
+                    .toList(growable: false),
+              )
+              .where((sequence) => sequence.isNotEmpty)
+              .toList(growable: false)
+        : const <List<List<double>>>[];
+    return CustomSign(
+      label: json['label'] as String,
+      samples: samples,
+      sequences: sequences,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      language: json['language'] as String? ?? 'ASL',
+      vectorSize: (json['vector_size'] as num?)?.toInt() ?? 0,
+      coordinateSpace: json['coordinate_space'] as String? ?? 'normalized_3d',
+      faceSignal: json['face_signal'] as String? ?? 'not captured',
+    );
+  }
 }

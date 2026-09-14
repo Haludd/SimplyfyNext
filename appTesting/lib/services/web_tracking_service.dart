@@ -92,6 +92,9 @@ class WebTrackingService implements TrackingService {
   Future<List<LandmarkFrame>> finishUtterance() async {
     final frames = List<LandmarkFrame>.unmodifiable(_utteranceFrames);
     _utteranceFrames.clear();
+    // A completed word is a hard temporal boundary. Do not let raw frames
+    // from this word influence the next word's tracking state.
+    _recentFrames.clear();
     _capturingUtterance = false;
     _status = 'MediaPipe four-world tracking · next sign';
     return frames;

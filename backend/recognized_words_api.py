@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Small local backend for browser-recognized ASL words.
+"""Optional local endpoint for compact gloss submission.
 
-It is intentionally separate from the legacy landmark-stream experiment. This
-endpoint accepts a compact word-level result only; it rejects camera frames,
-landmarks, and feature vectors at the HTTP boundary.
+The browser classifier is local. This endpoint is only used when an optional
+sentence-processing destination is configured; it never receives camera data.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
 from typing import Any
-
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_WORD_LENGTH = 80
@@ -85,8 +83,8 @@ def validate_event(value: Any) -> dict[str, Any]:
         raise ValidationError("request body must be a JSON object")
     if _contains_forbidden_data(value):
         raise ValidationError("word endpoint does not accept camera or landmark data")
-    if value.get("schema_version") != "signbridge.recognized-word.v1":
-        raise ValidationError("schema_version must be signbridge.recognized-word.v1")
+    if value.get("schema_version") != "signbridge.glosses.v1":
+        raise ValidationError("schema_version must be signbridge.glosses.v1")
 
     source = value.get("source")
     if not isinstance(source, dict):
@@ -94,6 +92,14 @@ def validate_event(value: Any) -> dict[str, Any]:
     classifier_id = _required_text(source.get("classifier_id"), "source.classifier_id")
     model_version = _required_text(source.get("model_version"), "source.model_version")
     execution = _required_text(source.get("execution"), "source.execution")
+
+    glosses = value.get("glosses")
+    if not isinstance(glosses, list) or not glosses or len(glosses) > 128:
+        raise ValidationError("glosses must contain between one and 128 items")
+    parsed_glosses = [
+        _required_text(gloss, f"glosses[{index}]").upper()
+        for index, gloss in enumerate(glosses)
+    ]
 
     alternatives = value.get("alternatives", [])
     if not isinstance(alternatives, list) or len(alternatives) > 3:
@@ -114,11 +120,11 @@ def validate_event(value: Any) -> dict[str, Any]:
         )
 
     return {
-        "schema_version": "signbridge.recognized-word.v1",
+        "schema_version": "signbridge.glosses.v1",
         "event_id": _required_text(value.get("event_id"), "event_id"),
         "session_id": _required_text(value.get("session_id"), "session_id"),
         "language": _required_text(value.get("language"), "language", maximum=16).upper(),
-        "word": _required_text(value.get("word"), "word"),
+        "glosses": parsed_glosses,
         "confidence": _confidence(value.get("confidence"), "confidence"),
         "source": {
             "classifier_id": classifier_id,
@@ -142,7 +148,10 @@ class RecognizedWordsHandler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self._respond(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
-        self._respond(HTTPStatus.OK, {"status": "ok", "transport": "word_only"})
+        self._respond(
+            HTTPStatus.OK,
+            {"status": "ok", "transport": "optional_glosses"},
+        )
 
     def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         if self.path != "/v1/recognized-signs":
@@ -164,8 +173,8 @@ class RecognizedWordsHandler(BaseHTTPRequestHandler):
             {
                 "status": "accepted",
                 "event_id": event["event_id"],
-                "caption": event["word"],
-                "tts_text": event["word"],
+                "caption": " ".join(event["glosses"]),
+                "tts_text": " ".join(event["glosses"]),
             },
         )
 

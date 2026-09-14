@@ -150,6 +150,39 @@ void main() {
     );
 
     test(
+      'finishing a word resets temporal coordinates before the next word',
+      () async {
+        service.beginUtterance();
+        upstream.ingest(
+          LandmarkFrameFixtures.fullyTrackedFrame(
+            timestamp: LandmarkFrameFixtures.epoch,
+          ),
+        );
+        await service.finishUtterance();
+        expect(service.recentFrames, isEmpty);
+        expect(upstream.recentFrames, isEmpty);
+
+        service.beginUtterance();
+        upstream.ingest(
+          LandmarkFrameFixtures.discontinuityFrame(
+            timestamp: LandmarkFrameFixtures.atFrame(1),
+          ),
+        );
+        final nextWord = await service.finishUtterance();
+
+        expect(nextWord, hasLength(1));
+        expect(service.recentFrames, isEmpty);
+        expect(upstream.recentFrames, isEmpty);
+        expect(
+          nextWord.single.normalisation!.hands
+              .expand((hand) => hand.landmarks)
+              .every((landmark) => landmark.velocity == null),
+          isTrue,
+        );
+      },
+    );
+
+    test(
       'finish includes the last frame from an asynchronous upstream',
       () async {
         final asyncUpstream = _FakeTrackingService(sync: false);
@@ -309,6 +342,7 @@ final class _FakeTrackingService implements TrackingService {
     _capturing = false;
     final result = List<LandmarkFrame>.unmodifiable(_utterance);
     _utterance.clear();
+    _recent.clear();
     return result;
   }
 

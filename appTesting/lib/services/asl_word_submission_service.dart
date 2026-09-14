@@ -5,8 +5,8 @@ import 'package:http/http.dart' as http;
 
 import '../models/asl_recognition_models.dart';
 
-/// Posts a browser-recognized word to the backend without uploading camera
-/// frames, MediaPipe landmarks, or feature windows.
+/// Optionally posts the accumulated local ASL gloss list to a sentence backend.
+/// Camera frames and landmarks never enter this request.
 final class AslWordSubmissionService {
   AslWordSubmissionService({
     this.endpoint,
@@ -55,6 +55,7 @@ final class AslWordSubmissionService {
     required String sessionId,
     required String language,
     required AslRecognitionResult result,
+    List<String> glosses = const <String>[],
     required DateTime startedAt,
     required DateTime endedAt,
   }) async {
@@ -68,6 +69,16 @@ final class AslWordSubmissionService {
         'must contain a recognized word',
       );
     }
+    final normalizedGlosses = glosses
+        .map((gloss) => gloss.trim().toUpperCase())
+        .where((gloss) => gloss.isNotEmpty)
+        .toList(growable: false);
+    final submittedGlosses = normalizedGlosses.isEmpty
+        ? <String>[result.word!.trim().toUpperCase()]
+        : normalizedGlosses;
+    final isPersonalTemplate = result.modelVersion.startsWith(
+      'personal_landmark_templates',
+    );
 
     late http.Response response;
     try {
@@ -79,16 +90,20 @@ final class AslWordSubmissionService {
               'content-type': 'application/json',
             },
             body: jsonEncode(<String, dynamic>{
-              'schema_version': 'signbridge.recognized-word.v1',
+              'schema_version': 'signbridge.glosses.v1',
               'event_id': eventId,
               'session_id': sessionId,
               'language': language.toUpperCase(),
-              'word': result.word,
+              'glosses': submittedGlosses,
               'confidence': result.confidence,
               'source': <String, String>{
-                'classifier_id': 'jamesbustos_asl_250',
+                'classifier_id': isPersonalTemplate
+                    ? 'personal_landmark_templates'
+                    : 'signchat_asl_signs_onnx',
                 'model_version': result.modelVersion,
-                'execution': 'browser_local',
+                'execution': isPersonalTemplate
+                    ? 'browser_template_matcher'
+                    : 'browser_onnx',
               },
               'started_at': startedAt.toUtc().toIso8601String(),
               'ended_at': endedAt.toUtc().toIso8601String(),

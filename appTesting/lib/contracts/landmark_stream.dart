@@ -176,6 +176,26 @@ final class LandmarkCameraGeometry {
   final int rotationDegrees;
   final bool mirroredInput;
 
+  factory LandmarkCameraGeometry.fromJson(Map<String, dynamic> json) {
+    final width = _requiredInt(json, 'source_width');
+    final height = _requiredInt(json, 'source_height');
+    final rotation = _requiredInt(json, 'rotation_degrees');
+    final mirrored = json['mirrored_input'];
+    if (width < 1 ||
+        height < 1 ||
+        !<int>[0, 90, 180, 270].contains(rotation) ||
+        mirrored is! bool ||
+        json['coordinates_canonical'] != true) {
+      throw const FormatException('Invalid canonical camera geometry');
+    }
+    return LandmarkCameraGeometry(
+      sourceWidth: width,
+      sourceHeight: height,
+      rotationDegrees: rotation,
+      mirroredInput: mirrored,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'source_width': sourceWidth,
     'source_height': sourceHeight,
@@ -267,12 +287,7 @@ bool _isCanonicalUuid(String value) => RegExp(
   caseSensitive: false,
 ).hasMatch(value);
 
-void _validateText(
-  String value,
-  String name,
-  int maximum, {
-  int minimum = 1,
-}) {
+void _validateText(String value, String name, int maximum, {int minimum = 1}) {
   if (value.trim().length < minimum || value.length > maximum) {
     throw ArgumentError.value(value, name, 'has an invalid length');
   }

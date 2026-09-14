@@ -91,6 +91,10 @@ final class StateNormalisedTrackingService implements TrackingService {
     _capturingUtterance = false;
     final result = List<LandmarkFrame>.unmodifiable(_utteranceFrames);
     _utteranceFrames.clear();
+    // A completed word is a hard temporal boundary. Do not carry smoothed
+    // coordinates, hand identities, or body anchors into the next word.
+    stateNormalisation.reset();
+    _recentFrames.clear();
     return result;
   }
 

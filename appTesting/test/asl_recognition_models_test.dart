@@ -7,7 +7,7 @@ void main() {
       'status': 'recognized',
       'word': 'hello',
       'confidence': .8125,
-      'model_version': 'jamesbustos_asl_250_809d456',
+      'model_version': 'signchat_asl_signs_onnx',
       'frame_count': 28,
       'started_at_ms': 1000,
       'ended_at_ms': 1933,
@@ -32,7 +32,7 @@ void main() {
     final result = AslRecognitionResult.fromJson(<String, dynamic>{
       'status': 'unknown',
       'confidence': .42,
-      'model_version': 'jamesbustos_asl_250_809d456',
+      'model_version': 'signchat_asl_signs_onnx',
       'frame_count': 16,
       'reason': 'low_confidence',
     });
@@ -42,7 +42,7 @@ void main() {
     expect(result.reason, 'low_confidence');
   });
 
-  test('parses a browser-local personal correction receipt', () {
+  test('retains the legacy receipt parser for stored local vocabulary', () {
     final receipt = AslPersonalTemplateReceipt.fromJson(<String, dynamic>{
       'status': 'stored',
       'label': 'bye',

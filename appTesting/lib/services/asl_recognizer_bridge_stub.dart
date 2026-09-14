@@ -1,8 +1,7 @@
 import '../models/asl_recognition_models.dart';
 
-/// Native platforms retain the existing tracking flow until a native TFLite
-/// runtime adapter is supplied. The browser implementation is selected by a
-/// conditional export.
+/// Native platforms retain the existing tracking flow. The browser
+/// implementation is selected by a conditional export.
 class AslRecognizerBridge {
   bool get isSupported => false;
 

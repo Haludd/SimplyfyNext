@@ -424,8 +424,8 @@ D3_p39       doc/[D3]_..., slide 39
 7.  **Master plan (`PLN`)**
     🔴 Not written — blocked on the architecture decisions
 8.  **Frontend implementation (`appTesting/`)**
-    🟢 Browser-local 250-sign ASL model integrated and tested on 2026-09-13. Setup and validation:
-    [`LAR_S1`](appTesting/LOCAL_ASL_RECOGNITION.md#1-run). Live signer accuracy remains unmeasured.
+    🟢 Browser-local 250-sign ASL ONNX classifier integrated on 2026-09-13. Setup and
+    model details: [`SIGNCHAT_ASL_RECOGNITION`](appTesting/SIGNCHAT_ASL_RECOGNITION.md).
 9.  **Dataset**
     🔴 Not collected. The largest open question
 10. **AWS lease**

@@ -4,16 +4,15 @@ import {
   ingestAslFrame,
   prepareAslRecognizer,
   resetAslSignCapture,
-} from './asl_recognizer.js?v=20260913-asl-250-sign';
+} from './asl_recognizer.js?v=20260913-signchat-onnx-6';
 
-// The bundled ASL model was trained with MediaPipe Holistic, not independent
-// Hand/Pose/Face Task models. The legacy browser Holistic solution emits the
-// identical 468-face + 33-pose + left/right-21-hand topology in one pass.
+// MediaPipe supplies the live overlay and the 543 landmark rows consumed by
+// the browser-local Signchat ONNX classifier.
 const HOLISTIC_CDN_BASE =
   'https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629';
 
-// These are the useful upper-body points from MediaPipe Pose. The model still
-// sees the complete pose internally; only this small, stable subset crosses
+// These are the useful upper-body points from MediaPipe Pose. Holistic still
+// tracks the complete pose internally; only this small, stable subset crosses
 // the application boundary.
 const POSE_LANDMARKS = [
   [0, 'nose'],
@@ -30,7 +29,7 @@ const POSE_LANDMARKS = [
 ];
 
 // Face Mesh indices for the upper-face and mouth regions. The remaining face
-// mesh points stay inside the browser for the ASL model; only these curated
+// mesh points stay inside the browser; only these curated
 // points cross into Flutter and the optional backend contract.
 const FACE_UPPER_LANDMARKS = [
   [33, 'left_eye_outer'],
@@ -105,7 +104,7 @@ const SUBJECT_AMBIGUITY_MARGIN = 0.08;
 // newcomer from silently replacing the signer during a sentence.
 // Use torso/head points for identity matching. Wrists and elbows are omitted
 // because they are expected to move quickly during signing.
-const SUBJECT_ANCHOR_INDICES = [0, 11, 12, 23, 24];
+const SUBJECT_ANCHOR_INDICES = [0, 11, 12];
 
 // MediaPipe gives us 21 points for each detected hand. Keep the five fingers
 // as named groups so the app can report the quality of each finger instead of
@@ -342,7 +341,10 @@ function poseCandidate(landmarks) {
   const visible = landmarks.filter(
     (point) => (point.visibility ?? point.presence ?? 0) >= 0.35,
   );
-  if (visible.length < 4) return null;
+  // A waist-up camera view can legitimately omit hips and legs. A face and
+  // both shoulders give the stable, non-signing reference needed to lock the
+  // current signer without waiting for lower-body landmarks.
+  if (visible.length < 3) return null;
   const xs = visible.map((point) => point.x);
   const ys = visible.map((point) => point.y);
   const minX = Math.min(...xs);
@@ -652,15 +654,14 @@ function validHandPoint(point) {
 
 function correctedHandedness(categoryName, source = 'tasks') {
   const raw = categoryName?.toLowerCase();
-  // Holistic already exposes the same named left/right result streams as the
-  // Python Holistic pipeline used to train this model. Do not flip them.
+  // Holistic exposes person-relative named left/right result streams. Keep
+  // those names unchanged for the overlay and capture-quality checks.
   if (source === 'holistic') {
     return raw === 'left' || raw === 'right' ? raw : 'unknown';
   }
   // CSS mirrors the preview only; the video pixels delivered to MediaPipe are
   // not mirrored. MediaPipe's hand labels assume mirrored selfie input, so
-  // swap them to restore the person-relative left/right order required by the
-  // upstream Holistic-trained ASL model.
+  // swap them to restore person-relative left/right order.
   if (raw === 'left') return 'right';
   if (raw === 'right') return 'left';
   return 'unknown';
@@ -898,6 +899,7 @@ function dispatchFrame(
   faceResult,
   timestampMs,
   selectedSubject,
+  holisticResults,
 ) {
   preparePointQualityFrame();
   const handednesses = result.handednesses ?? result.handedness ?? [];
@@ -990,7 +992,7 @@ function dispatchFrame(
   const landmarkWorlds = {
     // `hands` already carries the complete hand payload. Do not serialize it
     // again in `landmark_worlds`: duplicate JSON parsing on every video frame
-    // was consuming time that the local model needs for tracking.
+    // was consuming time needed by the live camera loop.
     pose: {
       landmarks: poseLandmarks,
     },
@@ -1048,20 +1050,14 @@ function dispatchFrame(
     landmark_worlds: landmarkWorlds,
     subject_tracking: subjectTracking,
   };
-  // The 250-sign ASL model needs the complete 543-point landmark tensor. Keep
-  // that tensor inside this browser module only; the ordinary Flutter event
-  // below remains the intentionally curated tracking contract.
+  // The browser-local Signchat classifier consumes the same full Holistic
+  // landmark result used to build the overlay frame.
   ingestAslFrame({
     timestampMs,
-    faceLandmarks,
-    poseLandmarks: pose,
-    leftHand: leftHand?.landmarks ?? [],
-    rightHand: rightHand?.landmarks ?? [],
-    subjectTracking,
+    holisticResults,
   });
-  // Keep the local recognizer fed from every detector result, but cap the
-  // expensive JS-to-Dart JSON handoff. Eighteen visual frames per second is
-  // smooth in the overlay and frees time for MediaPipe and TFLite inference.
+  // Keep the Flutter JSON handoff capped while the local classifier receives
+  // the full detector result above.
   if (timestampMs - lastFlutterFrameAt >= FLUTTER_EVENT_INTERVAL_MS) {
     lastFlutterFrameAt = timestampMs;
     window.dispatchEvent(
@@ -1079,9 +1075,8 @@ function holisticResultAsTaskResults(results) {
   const addHand = (points, handedness) => {
     if (!Array.isArray(points) || points.length !== 21) return;
     landmarks.push(points);
-    // Holistic is already person-relative and names its output slots exactly
-    // as the Python Holistic API used by the model. The score is only used by
-    // the visual-quality UI; model input stays the raw landmark coordinates.
+    // Holistic is already person-relative and names its output slots exactly.
+    // The score is only used by the visual-quality UI and capture gate.
     handednesses.push([{categoryName: handedness, score: 0.99}]);
   };
   addHand(results.leftHandLandmarks, 'left');
@@ -1108,6 +1103,8 @@ function onHolisticResults(results) {
     {landmarks: pose.length === 33 ? [pose] : []},
     {faceLandmarks: face.length === 468 ? [face] : []},
     Date.now(),
+    undefined,
+    results ?? {},
   );
   trackingLoopFrameCount += 1;
   if (now - trackingLoopLastLogAt >= 10_000) {
@@ -1167,9 +1164,8 @@ function createHolistic() {
   const tracker = new Holistic({
     locateFile: (file) => `${HOLISTIC_CDN_BASE}/${file}`,
   });
-  // These match the upstream Python live-recognition defaults: one coherent
-  // Holistic stream, 468 face landmarks (no iris refinement), full pose, and
-  // left/right hand slots produced by the same graph as training data.
+  // Keep one coherent Holistic stream with 468 face landmarks (no iris
+  // refinement), full pose, and person-relative left/right hand slots.
   tracker.setOptions({
     modelComplexity: 1,
     smoothLandmarks: true,
@@ -1219,7 +1215,8 @@ async function start() {
       audio: false,
       video: {
         facingMode: 'user',
-        // Match the upstream model's own Holistic live-recognition capture.
+        // Keep a landscape webcam stream that matches the backend model's
+        // resize/crop contract.
         width: { ideal: 640, max: 640 },
         height: { ideal: 480, max: 480 },
         frameRate: { ideal: 30, max: 30 },
@@ -1251,9 +1248,8 @@ async function start() {
   subjectReferenceIdentity = null;
   fingerQualityHistory = {left: {}, right: {}, unknown: {}};
   void prepareAslRecognizer().catch(() => {
-    // A missing locally-installed model must not stop ordinary landmark
-    // tracking. Flutter will surface the model-unavailable result at the end
-    // of a captured sign instead.
+    // Model loading errors are surfaced by the recognizer after the clip is
+    // completed; ordinary landmark tracking can continue meanwhile.
   });
   processFrame();
 }

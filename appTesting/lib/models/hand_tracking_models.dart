@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../contracts/landmark_stream.dart';
+
 import 'face_tracking_models.dart';
 
 const handLandmarkEdges = <List<int>>[
@@ -288,6 +290,7 @@ class HandTrackingFrame {
     this.faceUpperLandmarks = const <FaceLandmark>[],
     this.faceMouthLandmarks = const <FaceLandmark>[],
     this.subjectTracking,
+    this.cameraGeometry,
     this.processingConfidence = 0,
   });
 
@@ -300,10 +303,12 @@ class HandTrackingFrame {
   final List<FaceLandmark> faceUpperLandmarks;
   final List<FaceLandmark> faceMouthLandmarks;
   final SubjectTracking? subjectTracking;
+  final LandmarkCameraGeometry? cameraGeometry;
   final double processingConfidence;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'timestamp': timestamp.toUtc().toIso8601String(),
+    if (cameraGeometry != null) 'camera': cameraGeometry!.toJson(),
     'processing_confidence': processingConfidence,
     'hands': hands.map((hand) => hand.toJson()).toList(),
     'face': face?.toJson(),
@@ -341,6 +346,11 @@ class HandTrackingFrame {
       faceUpperLandmarks: worlds.faceUpper,
       faceMouthLandmarks: worlds.faceMouth,
       subjectTracking: _subjectFromJson(json['subject_tracking']),
+      cameraGeometry: json['camera'] is Map
+          ? LandmarkCameraGeometry.fromJson(
+              Map<String, dynamic>.from(json['camera'] as Map),
+            )
+          : null,
       hands: rawHands.isNotEmpty ? rawHands : worlds.hands,
     );
   }

@@ -5,7 +5,7 @@ SignBridge is an uncertainty-aware sign-language communication prototype. The Fl
 1. The camera is opened from the **Open camera** button inside the video feed.
 2. Live Translator shows the camera, landmark overlay, captions, tracking confidence, and view modes (Raw / Mesh / Clean).
 3. Capture starts automatically when a usable hand is detected; the signer does not press a Start button.
-4. A sustained pause, or hands leaving the frame after movement, automatically ends the utterance and prepares it for the next processing stage.
+4. A sustained pause, or hands leaving the frame after movement, automatically ends the current sign and prepares the next sign.
 5. The video overlay includes a camera-off button. Turning it off stops landmark tracking and releases the camera; the **Open camera** action starts it again.
 
 The older calibration, My signs, and Settings widgets remain in the source for
@@ -16,7 +16,6 @@ future work, but they are not part of the current single-page UI.
 Install Flutter, then from this directory run:
 
 ```bash
-python3 tool/setup_asl_model.py
 flutter pub get
 flutter run -d chrome
 ```
@@ -45,7 +44,7 @@ The current `frontend_track` UI now includes the speech features from the
 
 ## Hand tracking and sign analysis
 
-Chrome uses MediaPipe Hand Landmarker through `web/hand_tracking.js`. It requests camera permission, tracks up to two hands, and emits 21 points per hand: normalized `x/y`, relative `z`, handedness, confidence, and world-landmark values when available. MediaPipe Pose Landmarker supplies the left and right shoulder points. The preview is mirrored like a selfie camera, and the skeleton overlay applies the same flip so it stays aligned with the displayed hand; the wire format keeps the original unmirrored coordinates. `HandPoseNormalizer` converts those points into the shared `LandmarkFrame` contract. The frame contains coordinate groups, point confidence, subject tracking, and optional face-expression data for the next processing stage.
+Chrome uses MediaPipe Holistic through `web/hand_tracking.js`. It requests camera permission, tracks up to two hands, and emits 21 points per hand: normalized `x/y`, relative `z`, handedness, confidence, and world-landmark values when available. Holistic also supplies the pose and shoulder points. The preview is mirrored like a selfie camera, and the skeleton overlay applies the same flip so it stays aligned with the displayed hand; the wire format keeps the original unmirrored coordinates. `HandPoseNormalizer` converts those points into the shared `LandmarkFrame` contract. The frame contains coordinate groups, point confidence, subject tracking, and optional face-expression data for the next processing stage.
 
 The first stable pose becomes the subject for the current camera session. The
 tracker compares torso/head anchor shape and recent position, ignores other
@@ -60,11 +59,13 @@ Every emitted landmark's `visibility` is also used as a point-confidence estimat
 
 The overlay is a 3D-style skeleton projection. It is not pretending that a webcam can recover precise metric depth: `z` is relative depth from the hand model, projected onto the 2D camera view. This is the same compact representation that can be used by a later sequence classifier. Native Apple builds can use Vision's `VNDetectHumanHandPoseRequest` behind the same `TrackingService` interface.
 
-The ASL browser path now runs the requested James Bustos 250-sign TensorFlow Lite model locally.
-Setup, vocabulary, input coordinates, and validation are documented in
-[`LAR`](LOCAL_ASL_RECOGNITION.md). The model and browser runtime must be installed with
-`python3 tool/setup_asl_model.py` before running or building a fresh clone. The old 25-word ONNX
-model has been removed. Other language profiles retain the existing tracking flow.
+The ASL browser path runs Signchat's PopSign 250-class ONNX model locally.
+MediaPipe Holistic supplies the 543 landmark rows expected by the model, and
+ONNX Runtime Web performs inference in the browser. The approximately 21 MB
+model is cached locally after its first load; camera frames and landmarks do
+not leave the device. Setup and model details are documented in
+[`SIGNCHAT_ASL_RECOGNITION`](SIGNCHAT_ASL_RECOGNITION.md).
+Other language profiles retain the existing tracking flow.
 
 Chrome also supports an optional facial-expression signal. The Flutter web
 camera remains in the browser for hand and shoulder tracking. About once per
@@ -76,11 +77,13 @@ and class scores. If the local service is unavailable, hand and shoulder
 tracking continue but the face signal is left empty.
 
 My signs uses the live tracker rather than placeholder samples. Each valid capture
-stores five examples of a fixed local coordinate sample: wrist-centred x/y/z values
-for the left and right hands, curated pose/face coordinates, and facial-expression
-scores. The saved entry also
-keeps its selected language, coordinate-space label, and face signal for audit
-and later matching. One-handed signs are accepted; both hands are not required.
+stores five short, on-device landmark recordings: wrist-centred x/y/z values for
+the left and right hands plus curated torso pose values. At recognition time their
+motion is resampled and compared locally with the user's own templates; face and
+emotion slots are deliberately excluded from that comparison. This is personal
+template matching, not retraining or altering the shared 250-word ONNX model.
+The saved entry keeps its selected language and coordinate-space label for audit.
+One-handed signs are accepted; both hands are not required.
 The My signs page includes the ASL reference cards from the seed lexicon and
 keeps BSL/SgSL as separate profiles until approved, consented examples are
 available.
@@ -93,17 +96,17 @@ Chrome camera
   → stable subject/hand tracking state
   → body-relative normalisation
   → appTesting UI + LandmarkFrame JSON
-  → server-owned LandmarkBatch v1 adapter
-  → authenticated WebSocket transport
-  → Railway normalisation → segmentation → classification
-  → backend result / repair response
+  → MediaPipe Holistic 543-landmark frame buffer
+  → Signchat PopSign ONNX browser inference
+  → isolated gloss
+  → accumulated `{"glosses":["I","GO","SCHOOL"]}` sentence payload
 ```
 
 The `frontend_segment_classify` commit is not a trained Flutter classifier. It
 is a Python synthetic test kit that exercises a heuristic `SignAnalyzer` with
 generated hand/pose positions, and its README says it does not change the
-Flutter app or provide a trained recognizer. It is useful as a protocol
-experiment, but the production sign model remains on the server branch.
+Flutter app or provide a trained recognizer. The production ASL classifier is
+now browser-local.
 
 ### Capture boundaries and handoff
 
@@ -132,7 +135,7 @@ convenience view. Server-stream mode serializes the live frames into the fixed
 backend contract before sending them; it never sends the rich UI-only
 `LandmarkFrame.toJson()` shape.
 
-The schema deliberately stores landmarks, not a guessed translation:
+The live tracking schema stores landmarks for the overlay and local classifier:
 
 ```dart
 final List<LandmarkFrame> utteranceFrames = <LandmarkFrame>[];

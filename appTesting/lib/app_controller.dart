@@ -16,6 +16,7 @@ import 'services/asl_recognizer_bridge.dart';
 import 'services/asl_word_submission_service.dart';
 import 'services/local_state_service.dart';
 import 'services/local_sign_sequence.dart';
+import 'services/personal_sign_matcher.dart';
 import 'services/sign_analysis_service.dart';
 import 'services/speech_to_text_service.dart';
 import 'services/text_to_speech_service.dart';
@@ -60,6 +61,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   final SimulatedSignSequenceApiClient simulator =
       SimulatedSignSequenceApiClient();
   final SignBoundaryDetector _signBoundaryDetector = SignBoundaryDetector();
+  final PersonalSignMatcher _personalSignMatcher = const PersonalSignMatcher();
   final String sessionId = 'session-${DateTime.now().millisecondsSinceEpoch}';
 
   late final StreamSubscription<LandmarkFrame> _trackingSubscription;
@@ -73,6 +75,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   bool isUnregisteredSign = false;
   List<CustomSign> customSigns = <CustomSign>[];
   SignAnalysisResult? latestAnalysis;
+
+  /// Ordered WLASL glosses collected from completed isolated-word captures.
+  List<String> glosses = <String>[];
 
   /// The last completed result stays visible while the next sign is captured.
   SignAnalysisResult? get visibleAnalysis => latestAnalysis;
@@ -93,9 +98,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Compatibility view for the existing backend/lattice integration.
   List<LandmarkFrame> get lastUtteranceFrames => lastSignFrames;
   bool analysisInFlight = false;
+  int _localRecognitionsInFlight = 0;
   int _recognitionGeneration = 0;
   bool _disposed = false;
-  bool _automaticFinishInFlight = false;
+  bool _captureFinishInFlight = false;
+  bool _teachingPersonalSign = false;
   String backendStatus = 'Offline simulation · no backend configured';
   String selectedLanguage = 'ASL';
   String? backendActivityState;
@@ -127,24 +134,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _onTrackingFrame(LandmarkFrame frame) {
-    if (!_serverOwnsUtteranceLifecycle) {
+    if (!_serverOwnsUtteranceLifecycle && !isPaused && !_teachingPersonalSign) {
       // In local mode signs are automatic. In server mode the Railway
       // segmenter owns this lifecycle and the client only streams frames.
-      if (!analysisInFlight &&
-          !_automaticFinishInFlight &&
+      if ((!analysisInFlight || _usesLocalAslCapture) &&
+          !_captureFinishInFlight &&
           !tracking.isCapturingSign &&
           _hasCaptureSignal(frame)) {
         _signBoundaryDetector.reset();
         tracking.beginSign();
-        if (_usesLocalAslModel) unawaited(_aslRecognizer.beginCapture());
+        lastSignFrames = const <LandmarkFrame>[];
+        if (_usesLocalAslCapture) unawaited(_aslRecognizer.beginCapture());
         // Keep the completed word on screen while the next sign is being
         // captured. It will be replaced only by the next completed result.
-        backendStatus = _usesLocalAslModel
-            ? 'Listening · collecting one local sign'
+        backendStatus = _usesLocalAslCapture
+            ? 'Listening · collecting local ASL landmarks'
             : 'Listening · capturing one sign automatically';
       }
 
-      if (tracking.isCapturingSign && !_automaticFinishInFlight) {
+      if (tracking.isCapturingSign && !_captureFinishInFlight) {
         if (_signBoundaryDetector.update(frame)) {
           unawaited(analyzeSign(automatic: true));
         }
@@ -170,20 +178,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           (frame.subjectTracking!.locked && frame.subjectTracking!.visible)) &&
       (frame.handsVisible || frame.leftHandVisible || frame.rightHandVisible);
 
-  bool get _usesLocalAslModel =>
+  bool get _usesLocalAslCapture =>
       !_serverOwnsUtteranceLifecycle &&
       selectedLanguage.trim().toUpperCase() == 'ASL' &&
       _aslRecognizer.isSupported;
 
-  /// Whether the live ASL result can be corrected with a browser-local
-  /// personal motion template. This does not upload the capture.
-  bool get canTeachLastAslCapture =>
-      _usesLocalAslModel &&
-      !analysisInFlight &&
-      latestAnalysis?.modelVersion != null;
-
-  Future<AslPersonalTemplateReceipt?> teachLastAslCapture(String label) =>
-      _aslRecognizer.teachLastCapture(label);
+  bool get _usesLocalPersonalCapture =>
+      !_serverOwnsUtteranceLifecycle &&
+      customSigns.any(
+        (sign) =>
+            sign.hasEnoughSamples &&
+            sign.language.toUpperCase() ==
+                selectedLanguage.trim().toUpperCase(),
+      );
 
   LandmarkFrame? get latestFrame => tracking.latestFrame;
   AlignmentResult get alignment => AlignmentEvaluator().evaluate(
@@ -388,7 +395,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       return;
     }
-    if (analysisInFlight || tracking.isCapturingSign) return;
+    if ((!_usesLocalAslCapture && analysisInFlight) ||
+        _captureFinishInFlight ||
+        tracking.isCapturingSign) {
+      return;
+    }
     if (latestFrame == null) {
       backendStatus = 'Start the camera before capturing a sign';
       notifyListeners();
@@ -396,11 +407,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     _signBoundaryDetector.reset();
     tracking.beginSign();
-    if (_usesLocalAslModel) unawaited(_aslRecognizer.beginCapture());
+    lastSignFrames = const <LandmarkFrame>[];
+    if (_usesLocalAslCapture) unawaited(_aslRecognizer.beginCapture());
     // A manual capture should not make the previous sign disappear before
     // there is a newer completed result to show.
-    backendStatus = _usesLocalAslModel
-        ? 'Capturing one local sign'
+    backendStatus = _usesLocalAslCapture
+        ? 'Capturing landmark clip for local ASL model'
         : 'Capturing one sign locally';
     notifyListeners();
   }
@@ -411,9 +423,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// JSON-ready handoff for the next processing stage. The source of truth is
   /// still [lastSignFrames], not this serialized convenience view.
-  List<Map<String, dynamic>> get lastSignJson => lastSignFrames
-      .map((frame) => frame.toJson())
-      .toList(growable: false);
+  List<Map<String, dynamic>> get lastSignJson =>
+      lastSignFrames.map((frame) => frame.toJson()).toList(growable: false);
 
   @Deprecated('Use lastSignJson')
   List<Map<String, dynamic>> get lastUtteranceJson => lastSignJson;
@@ -424,6 +435,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       unawaited(_aslRecognizer.reset());
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       _signBoundaryDetector.reset();
+      glosses = <String>[];
     }
     selectedLanguage = language;
     notifyListeners();
@@ -522,16 +534,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       return;
     }
-    if (analysisInFlight || _automaticFinishInFlight) return;
+    final useLocalAslCapture = _usesLocalAslCapture;
+    final useLocalPersonalCapture =
+        !useLocalAslCapture && _usesLocalPersonalCapture;
+    if (_captureFinishInFlight ||
+        (!useLocalAslCapture && !useLocalPersonalCapture && analysisInFlight)) {
+      return;
+    }
     if (!tracking.isCapturingSign) {
       backendStatus = 'Waiting for a tracked hand signal';
       notifyListeners();
       return;
     }
+    _captureFinishInFlight = true;
+    var captureReleased = false;
+    if (useLocalAslCapture) _localRecognitionsInFlight += 1;
     analysisInFlight = true;
-    _automaticFinishInFlight = automatic;
     final generation = _recognitionGeneration;
-    final useLocalModel = _usesLocalAslModel;
     final language = selectedLanguage;
     backendStatus = 'Recognizing captured sign…';
     notifyListeners();
@@ -545,13 +564,29 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         backendStatus = 'Waiting for tracked frames';
         return;
       }
-      if (useLocalModel) {
-        final result = await _aslRecognizer.finishCapture();
+      if (useLocalAslCapture) {
+        // finishCapture snapshots the browser landmark buffer before its
+        // first await. Release the capture boundary while local ONNX
+        // inference runs so the next sign can be collected.
+        final pendingResult = _aslRecognizer.finishCapture();
+        _captureFinishInFlight = false;
+        captureReleased = true;
+        final result = await pendingResult;
         if (generation != _recognitionGeneration || _disposed) return;
         if (result == null) {
-          throw StateError('Local ASL recognizer unavailable');
+          throw StateError('Local ASL classifier unavailable');
         }
-        _acceptBrowserRecognition(result, frames);
+        _acceptLocalRecognition(_preferPersonalSign(result, frames), frames);
+        return;
+      }
+      if (useLocalPersonalCapture) {
+        final result = _personalSignRecognition(frames);
+        if (result == null) {
+          backendStatus =
+              'No close personal-sign match · repeat the saved sign clearly';
+          return;
+        }
+        _acceptLocalRecognition(result, frames);
         return;
       }
       final payload = SignSequencePayload(
@@ -572,24 +607,30 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         backendStatus = 'Recognition unavailable · ${_shortError(error)}';
       }
     } finally {
-      analysisInFlight = false;
-      _automaticFinishInFlight = false;
+      if (useLocalAslCapture) {
+        if (_localRecognitionsInFlight > 0) _localRecognitionsInFlight -= 1;
+        analysisInFlight = _localRecognitionsInFlight > 0;
+      } else {
+        analysisInFlight = false;
+      }
+      if (!captureReleased) _captureFinishInFlight = false;
       if (!_disposed) notifyListeners();
     }
   }
 
-  void _acceptBrowserRecognition(
+  void _acceptLocalRecognition(
     AslRecognitionResult result,
     List<LandmarkFrame> frames,
   ) {
-    _setLatestAnalysis(_browserAnalysis(result));
+    _setLatestAnalysis(_localAslAnalysis(result));
     if (!result.isRecognized) {
       backendStatus = result.status == 'unavailable'
-          ? 'Local ASL model unavailable · ${result.detail ?? 'install the ASL model assets'}'
+          ? 'Local ASL model unavailable · ${result.detail ?? 'check the browser model assets'}'
           : switch (result.reason) {
-              'too_few_hand_frames' || 'too_few_model_frames' =>
-                'Keep your face and signing hand in view for the whole sign',
+              'too_few_hand_frames' || 'too_few_model_frames' => 'Keep your upper body and signing hand in view for the whole sign',
               'tracking_interrupted' => 'Tracking was interrupted · keep your face and hands in view and retry',
+              'no_sign_motion' =>
+                'Make one clear sign movement, then pause briefly',
               'capture_too_long' => 'Sign one word, then pause briefly',
               _ => 'No high-confidence ASL word · sign again slowly',
             };
@@ -597,9 +638,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final word = result.word!;
+    glosses = <String>[...glosses, word.toUpperCase()];
     backendStatus = _wordSubmission.isConfigured
-        ? 'Local ASL word recognized · sending "$word" to backend'
-        : 'Local ASL word recognized · no word backend configured';
+        ? 'Local ASL recognized "$word" · sending glosses to backend'
+        : 'Local ASL recognized "$word" · glosses kept locally';
     if (audioEnabled) {
       final key =
           'local-asl:${frames.first.timestamp.microsecondsSinceEpoch}:${word.toLowerCase()}';
@@ -608,10 +650,46 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         unawaited(readCaptionAloud());
       }
     }
-    unawaited(_submitRecognizedWord(result, frames));
+    unawaited(_submitRecognizedWord(result, frames, glosses));
   }
 
-  SignAnalysisResult _browserAnalysis(AslRecognitionResult result) {
+  /// Gives a confidently matched personal sign precedence over the general
+  /// ASL model. Private vocabulary stays on-device and does not modify the
+  /// pretrained ONNX model.
+  AslRecognitionResult _preferPersonalSign(
+    AslRecognitionResult modelResult,
+    List<LandmarkFrame> frames,
+  ) => _personalSignRecognition(frames) ?? modelResult;
+
+  AslRecognitionResult? _personalSignRecognition(List<LandmarkFrame> frames) {
+    final sequence = _featureSequence(frames);
+    final match = _personalSignMatcher.match(
+      sequence: sequence,
+      signs: customSigns,
+      language: selectedLanguage,
+    );
+    if (match == null) return null;
+    return AslRecognitionResult(
+      status: 'recognized',
+      word: match.label,
+      confidence: match.confidence,
+      modelVersion: 'personal_landmark_templates_v1',
+      frameCount: sequence.length,
+      detail:
+          'Matched ${match.sampleCount} personal landmark recordings locally',
+      alternatives: <AslRecognitionCandidate>[
+        AslRecognitionCandidate(
+          word: match.label,
+          confidence: match.confidence,
+          rank: 1,
+        ),
+      ],
+      startedAtMs: frames.first.timestamp.millisecondsSinceEpoch,
+      endedAtMs: frames.last.timestamp.millisecondsSinceEpoch,
+    );
+  }
+
+  SignAnalysisResult _localAslAnalysis(AslRecognitionResult result) {
     final hypotheses = result.alternatives
         .map(
           (candidate) => <String, dynamic>{
@@ -639,7 +717,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         latencyMs: latency,
         detail:
             result.detail ??
-            '${result.frameCount} local frames · browser TensorFlow Lite inference',
+            '${result.frameCount} MediaPipe landmark frames · Signchat ONNX browser inference',
       );
     }
     return SignAnalysisResult(
@@ -666,6 +744,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _submitRecognizedWord(
     AslRecognitionResult result,
     List<LandmarkFrame> frames,
+    List<String> glosses,
   ) async {
     if (!_wordSubmission.isConfigured || !result.isRecognized) return;
     final generation = _recognitionGeneration;
@@ -680,6 +759,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         sessionId: sessionId,
         language: selectedLanguage,
         result: result,
+        glosses: glosses,
         startedAt: result.startedAtMs == null
             ? frames.first.timestamp
             : DateTime.fromMillisecondsSinceEpoch(
@@ -694,16 +774,47 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               ),
       );
       if (!isCurrent()) return;
+      if (receipt?.caption case final caption?) {
+        _setLatestAnalysis(
+          _sentenceBackendAnalysis(
+            result: result,
+            glosses: glosses,
+            caption: caption,
+            ttsText: receipt?.ttsText,
+          ),
+        );
+      }
       backendStatus = receipt == null
-          ? 'Local ASL word recognized'
-          : 'Word sent to backend · ${receipt.status}';
+          ? 'Local ASL gloss recognized'
+          : 'Glosses sent to backend · ${receipt.status}';
     } on Object catch (error) {
       if (!isCurrent()) return;
       backendStatus =
-          'Local word recognized · backend submission failed · '
+          'Gloss recognized · backend submission failed · '
           '${_shortError(error)}';
     }
     notifyListeners();
+  }
+
+  SignAnalysisResult _sentenceBackendAnalysis({
+    required AslRecognitionResult result,
+    required List<String> glosses,
+    required String caption,
+    String? ttsText,
+  }) {
+    final local = _localAslAnalysis(result);
+    return SignAnalysisResult(
+      status: 'confident',
+      gestureLabel: result.word ?? 'recognized sign',
+      caption: caption,
+      ttsText: ttsText ?? caption,
+      confidence: result.confidence,
+      glossTrace: List<String>.unmodifiable(glosses),
+      hypotheses: local.hypotheses,
+      modelVersion: result.modelVersion,
+      latencyMs: local.latencyMs,
+      detail: 'Sentence caption returned by the gloss-processing backend',
+    );
   }
 
   Future<void> completeCalibrationStep() async {
@@ -738,6 +849,27 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void togglePause() {
     isPaused = !isPaused;
+    if (isPaused) {
+      _recognitionGeneration += 1;
+      _signBoundaryDetector.reset();
+      if (tracking.isCapturingSign) unawaited(tracking.finishSign());
+      unawaited(_aslRecognizer.reset());
+    }
+    notifyListeners();
+  }
+
+  /// Suspends automatic word recognition only while a personal template is
+  /// being recorded. Camera tracking continues so the template can be built
+  /// from the live MediaPipe landmark stream.
+  void setPersonalSignRecording(bool value) {
+    if (_teachingPersonalSign == value) return;
+    _teachingPersonalSign = value;
+    if (value) {
+      _recognitionGeneration += 1;
+      _signBoundaryDetector.reset();
+      if (tracking.isCapturingSign) unawaited(tracking.finishSign());
+      unawaited(_aslRecognizer.reset());
+    }
     notifyListeners();
   }
 
@@ -751,11 +883,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> saveCustomSign(String label, List<List<double>> samples) async {
+  Future<void> saveCustomSign(
+    String label,
+    List<List<List<double>>> sequences,
+  ) async {
     final frame = latestFrame;
+    final samples = sequences
+        .where((sequence) => sequence.isNotEmpty)
+        .map(
+          (sequence) =>
+              List<double>.unmodifiable(sequence[sequence.length ~/ 2]),
+        )
+        .toList(growable: false);
     final sign = CustomSign(
       label: label,
       samples: samples,
+      sequences: sequences,
       createdAt: DateTime.now(),
       language: selectedLanguage,
       vectorSize: samples.isEmpty ? 0 : samples.first.length,
@@ -773,8 +916,29 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// fixed-width local sample: wrist-centred left/right hands, a
   /// shoulder-centred pose subset, curated face geometry, and facial-
   /// expression scores. The network contract remains LandmarkFrame JSON.
-  List<double>? captureCurrentSignSample() {
-    final frame = latestFrame;
+  List<double>? captureCurrentSignSample() =>
+      _featureVectorForFrame(latestFrame);
+
+  /// Returns the valid frames captured after [startedAt]. A personal-template
+  /// recording needs a short sequence, rather than a single pose snapshot.
+  List<List<double>>? capturePersonalSignSequence(DateTime startedAt) {
+    final sequence = _featureSequence(
+      tracking.recentFrames.where(
+        (frame) => !frame.timestamp.isBefore(startedAt),
+      ),
+    );
+    return sequence.length >= 8 ? sequence : null;
+  }
+
+  List<List<double>> _featureSequence(Iterable<LandmarkFrame> frames) => frames
+      .where(
+        (frame) => frame.trackingConfidence >= .70 && frame.hands.isNotEmpty,
+      )
+      .map(_featureVectorForFrame)
+      .whereType<List<double>>()
+      .toList(growable: false);
+
+  List<double>? _featureVectorForFrame(LandmarkFrame? frame) {
     if (frame == null ||
         frame.trackingConfidence < .70 ||
         frame.hands.isEmpty) {

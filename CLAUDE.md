@@ -2,7 +2,7 @@
 
 # 1. PURPOSE
 
-This repository contains the SimplyNext GlossLattice translation backend. The production code is
+This repository contains the SimplyNext ASL word-to-sentence and temporary-room backend. The production code is
 the source of truth. Planning documents describe the code that exists and the explicitly remaining
 production work; they must not invent unimplemented capabilities.
 
@@ -24,7 +24,7 @@ present. It is an intentionally Git-ignored operator workbook and must never be 
 - Keep the package in `src/simplynext/`; `src/` is the packaging root and `simplynext` is the
   public import namespace.
 - Treat `src/simplynext/contracts/` and its contract tests as the wire-protocol authority.
-- Preserve strict Pydantic validation, bounded payload sizes, monotonic lattice sequencing,
+- Preserve strict Pydantic validation, bounded payload sizes, monotonic participant sequencing,
   idempotent replay, and fail-closed repair behavior.
 - Never send raw video, landmarks, feature tensors, prompts, model responses, session tokens, or
   AWS credentials to logs.

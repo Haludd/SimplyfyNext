@@ -12,16 +12,14 @@ EVIDENCE_OUTPUT ?= release-evidence.json
 quality:
 	SIMPLYNEXT_BEDROCK_ENABLED=false \
 	SIMPLYNEXT_ANTHROPIC_ENABLED=false \
-	SIMPLYNEXT_CAPTION_TEMPLATES_PATH=data/caption_templates.example.json \
-	SIMPLYNEXT_LATTICE_VOCABULARY_VERSION=sgsl_demo_v1 \
 	SIMPLYNEXT_RECOGNITION_LANGUAGE=asl \
 	$(PYTHON) -m pytest
 	$(PYTHON) -m ruff check src tests scripts
-	SIMPLYNEXT_LATTICE_VOCABULARY_VERSION=sgsl_demo_v1 $(PYTHON) -m mypy src scripts
+	$(PYTHON) -m mypy src scripts
 	$(PYTHON) -m pip check
 
 package-smoke:
-	$(PYTHON) scripts/package_smoke.py data/caption_templates.example.json
+	$(PYTHON) scripts/package_smoke.py data/word_templates.example.json
 
 # Resolve this on Python 3.12 Linux. A missing or changed reviewed output fails
 # unless the operator explicitly sets UPDATE_LINUX_LOCK=1 after reviewing it.

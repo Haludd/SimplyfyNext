@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from simplynext.contracts.room_events import Reason
-from simplynext.contracts.translated_sign_utterance import StrictValue, WordIndex
+from simplynext.contracts.translated_sign_utterance import Sequence, StrictValue, WordIndex
 
 
 class AlignmentSpan(StrictValue):
@@ -43,6 +43,16 @@ class WordDraft(StrictValue):
 class WordVerdict(StrictValue):
     schema_version: Literal["1.0"] = "1.0"
     supported: bool
+    standalone_coherent: bool
+    history_relation: Literal[
+        "continuation",
+        "topic_change",
+        "explicit_correction",
+        "no_relevant_history",
+        "contradiction",
+        "uncertain",
+    ]
+    reference_sequences: Annotated[tuple[Sequence, ...], Field(max_length=4)]
     reason_code: Literal["supported"] | Reason
     target_indices: Annotated[tuple[WordIndex, ...], Field(max_length=64)]
     revision_instruction: (
@@ -57,11 +67,19 @@ class WordVerdict(StrictValue):
 
     @model_validator(mode="after")
     def consistent_verdict(self) -> "WordVerdict":
+        if self.supported and (
+            not self.standalone_coherent or self.history_relation in {"contradiction", "uncertain"}
+        ):
+            raise ValueError("acceptance requires coherence and a compatible history relation")
+        if self.history_relation == "contradiction" and not self.reference_sequences:
+            raise ValueError("contradiction requires an actual reference")
         if self.supported:
             if self.reason_code != "supported" or self.target_indices or self.revision_instruction:
                 raise ValueError("supported verdict cannot contain criticism")
         elif self.reason_code == "supported":
             raise ValueError("unsupported verdict needs a reason")
+        if len(set(self.reference_sequences)) != len(self.reference_sequences):
+            raise ValueError("duplicate reference sequence")
         if len(set(self.target_indices)) != len(self.target_indices):
             raise ValueError("duplicate target index")
         return self

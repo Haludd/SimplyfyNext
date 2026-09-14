@@ -37,7 +37,8 @@ from simplynext.contracts.translated_sign_utterance import (
     WordProducer,
     canonical_digest,
 )
-from simplynext.rooms.context import ConversationContext, ConversationTurn
+from simplynext.rooms.context import ConversationContext, ConversationHistory, ConversationTurn
+from simplynext.spend import SpendAccount
 
 
 class RoomFailure(Exception):
@@ -111,7 +112,13 @@ class Room:
     version: int = 0
     context_version: int = 0
     next_server_sequence: int = 1
-    summary: str = ""
+    history: ConversationHistory = field(default_factory=ConversationHistory)
+    compaction_task: asyncio.Task[None] | None = None
+    spend: SpendAccount = field(default_factory=SpendAccount)
+
+    @property
+    def summary(self) -> str:
+        return self.history.summary
 
 
 @dataclass(frozen=True)
@@ -127,9 +134,13 @@ class RoomStore:
         limits: RoomLimits | None = None,
         *,
         clock: Callable[[], float] = monotonic,
+        assembler_token_budget: int = 8000,
+        critic_token_budget: int = 3000,
     ) -> None:
         self.limits = limits or RoomLimits()
         self.clock = clock
+        self.assembler_token_budget = assembler_token_budget
+        self.critic_token_budget = critic_token_budget
         self.rooms: dict[str, Room] = {}
         self._invitations: dict[str, deque[float]] = {}
         self._global_invitations: deque[float] = deque()
@@ -279,23 +290,29 @@ class RoomStore:
         )
 
     def context(self, room: Room) -> ConversationContext:
-        turns = tuple(
-            ConversationTurn(
-                server_sequence=message.server_sequence,
-                speaker=room.participants[message.sender_id].role,
-                source=message.source,
-                text=message.text,
-            )
-            for message in room.messages.values()
-            if isinstance(message, AcceptedMessage)
-        )[-10:]
         return ConversationContext(
             room_id=room.id,
             context_version=room.context_version,
-            summary=room.summary,
-            recent_turns=turns,
+            summary=room.history.summary,
+            summary_through_server_sequence=room.history.through,
+            recent_turns=room.history.recent,
+            overflow_turns=room.history.overflow,
             participant_aliases=tuple(p.alias for p in room.participants.values()),
+            assembler_token_budget=self.assembler_token_budget,
+            critic_token_budget=self.critic_token_budget,
         )
+
+    @staticmethod
+    def record_turn(room: Room, participant: Participant, message: AcceptedMessage) -> None:
+        room.history.append(
+            ConversationTurn(
+                server_sequence=message.server_sequence,
+                speaker=participant.role,
+                source=message.source,
+                text=message.text,
+            )
+        )
+        room.context_version += 1
 
     def admit(
         self,
@@ -362,7 +379,7 @@ class RoomStore:
             room.pending = key
         else:
             message = AcceptedMessage(**common, source=request.source, text=request.text)
-            room.context_version += 1
+            self.record_turn(room, participant, message)
         participant.next_sequence += 1
         participant.pending_repair = None
         room.next_server_sequence += 1
@@ -408,7 +425,7 @@ class RoomStore:
             terminal = AcceptedMessage(
                 **common, source="sign", text=outcome.text, translation=outcome
             )
-            room.context_version += 1
+            self.record_turn(room, participant, terminal)
         else:
             terminal = RepairMessage(**common, repair=outcome)
             participant.pending_repair = message_id
@@ -469,6 +486,7 @@ class RoomStore:
         if room.state == "ended":
             return
         room.state = "ending"
+        room.spend.erase()
         ended = RoomEnded(room_version=self.bump(room))
         for task in tuple(room.tasks):
             if task is not asyncio.current_task():
@@ -491,7 +509,8 @@ class RoomStore:
         room.messages.clear()
         room.requests.clear()
         room.sequences.clear()
-        room.summary = ""
+        room.history.clear()
+        room.compaction_task = None
         room.pending = None
         room.context_version = 0
         room.state = "ended"

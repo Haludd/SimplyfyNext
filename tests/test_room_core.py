@@ -382,6 +382,9 @@ async def test_end_during_each_agent_stage_cannot_publish_or_start_another_stage
                 else dict(
                     schema_version="1.0",
                     supported=False,
+                    standalone_coherent=False,
+                    history_relation="no_relevant_history",
+                    reference_sequences=[],
                     reason_code="unnatural_sentence",
                     target_indices=[],
                     revision_instruction="improve_grammar",

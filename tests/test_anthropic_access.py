@@ -42,7 +42,7 @@ def test_text_request_is_translated_and_response_preserves_internal_shape() -> N
         system=[{"text": "You are a strict JSON assistant."}],
         messages=[{"role": "user", "content": [{"text": "Return JSON."}]}],
         inferenceConfig={"maxTokens": 40, "temperature": 0.0},
-        requestMetadata={"simplynext_role": "assembler"},
+        requestMetadata={"simplynext_role": "word_assembler"},
     )
 
     request = client.messages.calls[0]
@@ -53,13 +53,7 @@ def test_text_request_is_translated_and_response_preserves_internal_shape() -> N
         {"role": "user", "content": [{"type": "text", "text": "Return JSON."}]}
     ]
     assert request["output_config"]["format"]["type"] == "json_schema"
-    assert request["output_config"]["format"]["schema"]["required"] == [
-        "schema_version",
-        "utterance_id",
-        "language",
-        "candidate_text",
-        "parts",
-    ]
+    assert "alignment" in request["output_config"]["format"]["schema"]["required"]
     assert response["output"] == {
         "message": {"role": "assistant", "content": [{"text": '{"ok":true}'}]}
     }
@@ -81,7 +75,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
                     "type": "tool_use",
                     "id": "tool-1",
                     "name": "lookup",
-                    "input": {"gloss_id": "HELLO"},
+                    "input": {"word": "HELLO"},
                 }
             ],
             "stop_reason": "tool_use",
@@ -102,7 +96,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
                         "toolUse": {
                             "toolUseId": "tool-1",
                             "name": "lookup",
-                            "input": {"gloss_id": "HELLO"},
+                            "input": {"word": "HELLO"},
                         }
                     }
                 ],
@@ -126,7 +120,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
                 {
                     "toolSpec": {
                         "name": "lookup",
-                        "description": "Look up a grounded gloss entry from trusted state.",
+                        "description": "Look up a grounded word entry from trusted state.",
                         "inputSchema": {"json": {"type": "object"}},
                         "strict": True,
                     }
@@ -139,7 +133,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
     assert request["tools"] == [
         {
             "name": "lookup",
-            "description": "Look up a grounded gloss entry from trusted state.",
+            "description": "Look up a grounded word entry from trusted state.",
             "input_schema": {"type": "object"},
         }
     ]
@@ -152,7 +146,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
                 "type": "tool_use",
                 "id": "tool-1",
                 "name": "lookup",
-                "input": {"gloss_id": "HELLO"},
+                "input": {"word": "HELLO"},
             }
         ],
     }
@@ -175,7 +169,7 @@ def test_tool_blocks_round_trip_without_changing_agent_protocol() -> None:
                     "toolUse": {
                         "toolUseId": "tool-1",
                         "name": "lookup",
-                        "input": {"gloss_id": "HELLO"},
+                        "input": {"word": "HELLO"},
                     }
                 }
             ],

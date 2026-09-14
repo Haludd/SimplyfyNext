@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from math import ceil, isfinite
 from threading import Lock
 
 
@@ -25,12 +26,18 @@ class _Timing:
     total_ms: float = 0.0
     minimum_ms: float = float("inf")
     maximum_ms: float = 0.0
+    samples: deque[float] = field(default_factory=lambda: deque(maxlen=2048))
 
     def add(self, value_ms: float) -> None:
         self.count += 1
         self.total_ms += value_ms
         self.minimum_ms = min(self.minimum_ms, value_ms)
         self.maximum_ms = max(self.maximum_ms, value_ms)
+        self.samples.append(value_ms)
+
+    def percentile(self, fraction: float) -> float:
+        values = sorted(self.samples)
+        return values[max(0, ceil(len(values) * fraction) - 1)] if values else 0.0
 
 
 class MetricsRegistry:
@@ -39,6 +46,7 @@ class MetricsRegistry:
     def __init__(self) -> None:
         self._counters: defaultdict[str, int] = defaultdict(int)
         self._timings: defaultdict[str, _Timing] = defaultdict(_Timing)
+        self._values: defaultdict[str, _Timing] = defaultdict(_Timing)
         self._lock = Lock()
 
     def increment(self, name: str, amount: int = 1) -> None:
@@ -48,10 +56,16 @@ class MetricsRegistry:
             self._counters[name] += amount
 
     def observe_ms(self, name: str, value_ms: float) -> None:
-        if value_ms < 0:
+        if not isfinite(value_ms) or value_ms < 0:
             raise ValueError("latency cannot be negative")
         with self._lock:
             self._timings[name].add(value_ms)
+
+    def observe_count(self, name: str, value: int) -> None:
+        if value < 0:
+            raise ValueError("count cannot be negative")
+        with self._lock:
+            self._values[name].add(value)
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -62,7 +76,19 @@ class MetricsRegistry:
                     "mean_ms": timing.total_ms / timing.count if timing.count else 0.0,
                     "minimum_ms": 0.0 if timing.count == 0 else timing.minimum_ms,
                     "maximum_ms": timing.maximum_ms,
+                    "p50_ms": timing.percentile(0.50),
+                    "p95_ms": timing.percentile(0.95),
+                    "sample_count": len(timing.samples),
                 }
                 for name, timing in sorted(self._timings.items())
             }
-        return {"counters": counters, "timings": timings}
+            values = {
+                name: {
+                    "count": v.count,
+                    "mean": v.total_ms / v.count,
+                    "minimum": v.minimum_ms,
+                    "maximum": v.maximum_ms,
+                }
+                for name, v in sorted(self._values.items())
+            }
+        return {"counters": counters, "timings": timings, "values": values}

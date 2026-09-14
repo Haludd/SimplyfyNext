@@ -16,7 +16,7 @@ def test_package_resource_smoke_runs_from_outside_checkout(tmp_path: Path) -> No
         [
             sys.executable,
             str(PROJECT_ROOT / "scripts" / "package_smoke.py"),
-            str(PROJECT_ROOT / "data" / "caption_templates.example.json"),
+            str(PROJECT_ROOT / "data" / "word_templates.example.json"),
         ],
         cwd=tmp_path,
         env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},

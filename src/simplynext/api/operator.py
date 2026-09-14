@@ -40,4 +40,3 @@ def require_operator_token(
             detail="Invalid operator authorization",
             headers={"WWW-Authenticate": "Bearer"},
         )
-

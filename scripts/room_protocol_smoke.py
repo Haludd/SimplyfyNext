@@ -65,18 +65,6 @@ async def run_smoke(base_url: str, *, templates: bool = False) -> None:
                         )
                     )
                     assert json.loads(await socket.recv())["type"] == "snapshot"
-                response = await client.post(
-                    room_url + "/messages",
-                    headers=hearing_headers,
-                    json={
-                        "schema_version": "1.0",
-                        "message_id": str(uuid4()),
-                        "client_sequence": 0,
-                        "source": "text",
-                        "text": "Hello.",
-                    },
-                )
-                assert response.status_code == 201
                 payload = json.loads(
                     (
                         Path(__file__).parents[1]
@@ -110,6 +98,18 @@ async def run_smoke(base_url: str, *, templates: bool = False) -> None:
 
                 one, two = await asyncio.gather(terminal(first), terminal(second))
                 assert one == two and one["status"] == ("accepted" if templates else "repair")
+                response = await client.post(
+                    room_url + "/messages",
+                    headers=hearing_headers,
+                    json={
+                        "schema_version": "1.0",
+                        "message_id": str(uuid4()),
+                        "client_sequence": 0,
+                        "source": "text",
+                        "text": "Hello.",
+                    },
+                )
+                assert response.status_code == 201
                 retry = await client.post(
                     room_url + "/sign-utterances", headers=signer_headers, json=payload
                 )

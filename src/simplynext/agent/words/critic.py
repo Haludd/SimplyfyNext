@@ -59,8 +59,15 @@ class TemplateWordCritic:
         supported = (
             self.approved.get(tuple(w.word for w in utterance.words)) == draft.candidate_text
         )
+        # Exact templates can attest grammar/grounding but cannot judge relationships
+        # with prior speech. Contextual acceptance requires the independent provider critic.
+        has_history = bool(context.summary or context.recent_turns or context.overflow_turns)
+        supported = supported and not has_history
         return WordVerdict(
             supported=supported,
-            reason_code="supported" if supported else "unsupported_detail",
+            standalone_coherent=True,
+            history_relation="uncertain" if has_history else "no_relevant_history",
+            reference_sequences=(),
+            reason_code="supported" if supported else "context_conflict",
             target_indices=(),
         )

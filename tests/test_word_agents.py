@@ -83,6 +83,9 @@ def verdict(supported=True, **updates):
     return dict(
         schema_version="1.0",
         supported=supported,
+        standalone_coherent=supported,
+        history_relation="no_relevant_history",
+        reference_sequences=[],
         reason_code="supported" if supported else "unnatural_sentence",
         target_indices=[],
         revision_instruction=None if supported else "improve_grammar",
@@ -124,7 +127,9 @@ async def test_grammar_eval_exact_words_to_natural_sentences(entry):
         word_templates_path=ROOT / "data/word_templates.example.json",
     )
     runtime = build_word_translation_engine(settings)
-    result = await runtime.process(utterance(entry["words"]), context())
+    result = await runtime.process(
+        utterance(entry["words"]), ConversationContext(room_id=uuid4(), context_version=0)
+    )
     assert result.status == "accepted"
     assert result.text == entry["draft"]["candidate_text"]
     assert result.tts_text == result.text
@@ -147,8 +152,7 @@ async def test_hosted_stages_are_independent_and_context_is_narrowed():
     assert len(a["reference_context"]["recent_turns"]) == 10
     assert len(c["reference_context"]["recent_turns"]) == 2
     assert (
-        "summary" not in c["reference_context"]
-        and "participant_aliases" not in c["reference_context"]
+        "summary" in c["reference_context"] and "participant_aliases" not in c["reference_context"]
     )
     assert set(c) == {"reference_context", "current_evidence", "draft"}
 
@@ -326,13 +330,11 @@ async def test_direct_anthropic_uses_generated_word_schemas_and_shared_cost_guar
     )
     result = await engine(guarded).process(utterance(), context())
     assert result.status == "accepted"
-    assert (
-        client.messages.calls[0]["output_config"]["format"]["schema"]
-        == transform_schema(WordDraft)
+    assert client.messages.calls[0]["output_config"]["format"]["schema"] == transform_schema(
+        WordDraft
     )
-    assert (
-        client.messages.calls[1]["output_config"]["format"]["schema"]
-        == transform_schema(WordVerdict)
+    assert client.messages.calls[1]["output_config"]["format"]["schema"] == transform_schema(
+        WordVerdict
     )
     assert guard.snapshot().estimated_spend_usd > 0
     tiny = BedrockCostGuard(pricing=pricing, spend_limit_usd=Decimal(".000001"))

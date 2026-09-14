@@ -11,13 +11,15 @@ from __future__ import annotations
 import json
 import logging
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
 from threading import Lock
+from time import monotonic
 from typing import Any, Final, Protocol, cast
 
 from simplynext.observability.metrics import MetricsRegistry
+from simplynext.spend import SPEND_LOCK, SpendScope, current_spend_scope
 
 DEFAULT_BEDROCK_INPUT_USD_PER_MILLION: Final = Decimal("1.10")
 DEFAULT_BEDROCK_OUTPUT_USD_PER_MILLION: Final = Decimal("5.50")
@@ -34,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 class BedrockBudgetExceeded(RuntimeError):
     """Raised before a call whose reservation would exceed the local ceiling."""
+
+    def __init__(self, message: str, *, scope: str = "process") -> None:
+        super().__init__(message)
+        self.scope = scope
 
 
 class BedrockUsageUnavailable(RuntimeError):
@@ -69,7 +75,7 @@ def create_bedrock_client(
         import boto3  # type: ignore[import-untyped]
         from botocore.config import Config  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover - depends on installation
-        raise RuntimeError("boto3 is required for Bedrock lattice assembly") from exc
+        raise RuntimeError("boto3 is required for Bedrock word assembly") from exc
     return cast(
         _ConverseClient,
         boto3.client(
@@ -111,7 +117,11 @@ class BedrockPricing:
 
         _require_token_count(input_tokens, "input_tokens")
         _require_token_count(output_tokens, "output_tokens")
-        input_rate = max(self.input_usd_per_million, self.cache_write_usd_per_million)
+        input_rate = max(
+            self.input_usd_per_million,
+            self.cache_write_usd_per_million,
+            self.cache_read_usd_per_million,
+        )
         return (
             Decimal(input_tokens) * input_rate
             + Decimal(output_tokens) * self.output_usd_per_million
@@ -204,6 +214,8 @@ class BedrockUtteranceCost:
 class _Reservation:
     reservation_id: int
     maximum_cost_usd: Decimal
+    scope: SpendScope | None = None
+    unreported_retry_cost: Decimal = Decimal(0)
 
 
 class BedrockCostGuard:
@@ -215,6 +227,11 @@ class BedrockCostGuard:
         pricing: BedrockPricing,
         spend_limit_usd: Decimal = DEFAULT_BEDROCK_SPEND_LIMIT_USD,
         known_spend_usd: Decimal = Decimal(0),
+        request_limit_usd: Decimal | None = None,
+        room_limit_usd: Decimal | None = None,
+        hourly_limit_usd: Decimal | None = None,
+        total_max_attempts: int = 1,
+        clock: Callable[[], float] = monotonic,
     ) -> None:
         _require_money(spend_limit_usd, "spend_limit_usd", positive=True)
         _require_money(known_spend_usd, "known_spend_usd", positive=False)
@@ -227,7 +244,18 @@ class BedrockCostGuard:
         self._next_reservation_id = 1
         self._completed_calls = 0
         self._rejected_calls = 0
-        self._lock = Lock()
+        for value in (request_limit_usd, room_limit_usd, hourly_limit_usd):
+            if value is not None:
+                _require_money(value, "scoped spend limit", positive=True)
+        _require_token_count(total_max_attempts, "total_max_attempts", positive=True)
+        self._request_limit = request_limit_usd
+        self._room_limit = room_limit_usd
+        self._hourly_limit = hourly_limit_usd
+        self._attempts = total_max_attempts
+        self._clock = clock
+        # Minute buckets conservatively retain charges for 60–61 minutes. No IDs.
+        self._hourly: dict[int, Decimal] = {int(clock() // 60): known_spend_usd}
+        self._lock = SPEND_LOCK
 
     @property
     def pricing(self) -> BedrockPricing:
@@ -238,21 +266,49 @@ class BedrockCostGuard:
 
         if model_id != self._pricing.model_id:
             raise ValueError("Bedrock model_id has no matching configured pricing")
-        maximum_cost = self._pricing.maximum_cost_usd(
+        single_cost = self._pricing.maximum_cost_usd(
             input_tokens=input_tokens,
             output_tokens=max_output_tokens,
         )
+        maximum_cost = single_cost * self._attempts
+        scope = current_spend_scope.get()
         with self._lock:
+            self._prune_hourly()
             reserved = sum(self._reservations.values(), Decimal(0))
             projected = self._estimated_spend_usd + reserved + maximum_cost
+            rejected_scope: str | None = None
             if projected > self._spend_limit_usd:
+                rejected_scope = "process"
+            elif self._hourly_limit is not None and (
+                sum(self._hourly.values(), Decimal(0)) + reserved + maximum_cost
+                > self._hourly_limit
+            ):
+                rejected_scope = "hour"
+            if scope is not None:
+                for name, account, limit in (
+                    ("room", scope.room, self._room_limit),
+                    ("request", scope.request, self._request_limit),
+                ):
+                    if account.closed or (
+                        limit is not None
+                        and account.spent + account.reserved + maximum_cost > limit
+                    ):
+                        rejected_scope = name
+            if rejected_scope is not None:
                 self._rejected_calls += 1
                 raise BedrockBudgetExceeded(
-                    "Bedrock spend ceiling would be exceeded by this model call"
+                    "Provider spend ceiling would be exceeded by this model call",
+                    scope=rejected_scope,
                 )
-            reservation = _Reservation(self._next_reservation_id, maximum_cost)
+            reservation = _Reservation(
+                self._next_reservation_id, maximum_cost, scope,
+                single_cost * (self._attempts - 1),
+            )
             self._next_reservation_id += 1
             self._reservations[reservation.reservation_id] = maximum_cost
+            if scope is not None:
+                scope.room.reserved += maximum_cost
+                scope.request.reserved += maximum_cost
             return reservation
 
     def settle(
@@ -264,16 +320,30 @@ class BedrockCostGuard:
         """Commit actual estimated cost, or the full reservation when usage is unknown."""
 
         actual_cost = (
-            reservation.maximum_cost_usd if usage is None else self._pricing.usage_cost_usd(usage)
+            reservation.maximum_cost_usd if usage is None else (
+                self._pricing.usage_cost_usd(usage) + reservation.unreported_retry_cost
+            )
         )
         with self._lock:
             reserved_cost = self._reservations.pop(reservation.reservation_id, None)
             if reserved_cost is None or reserved_cost != reservation.maximum_cost_usd:
                 raise RuntimeError("Bedrock budget reservation is invalid or already settled")
             self._estimated_spend_usd += actual_cost
+            self._prune_hourly()
+            bucket = int(self._clock() // 60)
+            self._hourly[bucket] = self._hourly.get(bucket, Decimal(0)) + actual_cost
+            if reservation.scope is not None:
+                for account in (reservation.scope.room, reservation.scope.request):
+                    if not account.closed:
+                        account.reserved -= reserved_cost
+                        account.spent += actual_cost
             self._completed_calls += 1
             snapshot = self._snapshot_locked()
         return actual_cost, snapshot
+
+    def _prune_hourly(self) -> None:
+        cutoff = int(self._clock() // 60) - 60
+        self._hourly = {k: v for k, v in self._hourly.items() if k >= cutoff}
 
     def snapshot(self) -> BedrockSpendSnapshot:
         with self._lock:
@@ -339,6 +409,13 @@ class CostGuardedConverseClient:
         max_output_tokens = _maximum_output_tokens(request)
         estimated_input_tokens = _conservative_input_token_bound(request)
         role, utterance_id = _request_context(request)
+        scope = current_spend_scope.get()
+        if scope is not None:
+            utterance_id = scope.correlation_id
+            request["requestMetadata"] = {
+                "simplynext_role": role,
+                "simplynext_utterance_id": utterance_id,
+            }
         self._increment("model_calls_total")
 
         try:
@@ -347,8 +424,9 @@ class CostGuardedConverseClient:
                 input_tokens=estimated_input_tokens,
                 max_output_tokens=max_output_tokens,
             )
-        except BedrockBudgetExceeded:
+        except BedrockBudgetExceeded as exc:
             self._increment("model_calls_budget_rejected")
+            self._increment(f"budget_rejected_{exc.scope}")
             logger.warning(
                 "bedrock_cost_guard_rejected model_id=%s role=%s utterance_id=%s",
                 model_id,
@@ -435,6 +513,12 @@ class CostGuardedConverseClient:
         nano_usd = int((cost * NANO_USD_PER_USD).to_integral_value(rounding=ROUND_CEILING))
         self._increment("estimated_cost_nano_usd", nano_usd)
         with self._utterance_costs_lock:
+            if current_spend_scope.get() is not None:
+                # Room/request state is erased with its owner; keep only global
+                # numeric metrics after delivery, never a cross-room ID cache.
+                return BedrockUtteranceCost(
+                    utterance_id=utterance_id, model_calls=1, estimated_cost_usd=cost
+                )
             previous = self._utterance_costs.get(
                 utterance_id,
                 BedrockUtteranceCost(utterance_id=utterance_id),
@@ -638,7 +722,8 @@ def _conservative_input_token_bound(request: Mapping[str, Any]) -> int:
     }
     metadata = request.get("requestMetadata")
     if isinstance(metadata, Mapping) and metadata.get("simplynext_role") in {
-        "word_assembler", "word_critic",
+        "word_assembler",
+        "word_critic",
     }:
         from anthropic import transform_schema
 

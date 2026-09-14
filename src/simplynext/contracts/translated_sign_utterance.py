@@ -1,4 +1,4 @@
-"""Frozen ASL-to-English lexical ingress; deliberately unrelated to lattice models."""
+"""Frozen ASL-to-English lexical ingress with strict semantic validation."""
 
 from __future__ import annotations
 

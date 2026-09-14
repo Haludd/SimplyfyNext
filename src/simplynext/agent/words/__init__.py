@@ -1,1 +1,1 @@
-"""ASL English-word agent pipeline; no lattice conversion or provider chat history."""
+"""ASL English-word agents with application-owned conversation context."""

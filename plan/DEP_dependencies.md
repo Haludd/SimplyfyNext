@@ -32,10 +32,10 @@ checkout convenience and is not the package boundary.
 | `boto3` | `>=1.35,<2` | Bedrock control-plane and runtime clients; credential provider chain |
 | `fastapi` | `>=0.115,<1` | ASGI application, HTTP routes, WebSocket upgrade, CORS |
 | `httpx` | `>=0.27,<1` | Anthropic API timeout transport and optional protocol client |
-| `langgraph` | `==1.2.11` | Bounded assembler/critic/repair graph and in-memory checkpoints |
 | `pydantic` | `>=2.9,<3` | Strict contracts, agent values, and validation |
 | `pydantic-settings` | `>=2.6,<3` | `.env` and `SIMPLYNEXT_*` runtime configuration |
 | `uvicorn` | `>=0.30,<1` | One-worker ASGI server |
+| `websockets` | `>=14,<17` | Required production WebSocket protocol and smoke client |
 
 These are the only direct production dependencies. Anthropic and Bedrock are optional at runtime,
 but remain in the production image so either reviewed provider can be enabled without rebuilding.
@@ -49,9 +49,8 @@ OpenCV, TensorFlow, PyTorch, and server-side landmark libraries are not backend 
 | `mypy` | `>=1.13,<2` | Strict package type checking |
 | `jsonschema` | `>=4.23,<5` | Draft 2020-12 schema and UUID-format parity tests for the word handoff |
 | `pytest` | `>=8.3,<9` | Test runner |
-| `pytest-asyncio` | `>=0.24,<1` | Async session/runtime tests |
+| `pytest-asyncio` | `>=0.24,<1` | Async room/runtime tests |
 | `ruff` | `>=0.8,<1` | Import, correctness, and style checks |
-| `websockets` | `>=14,<17` | Explicit Phase 1 HTTP/WebSocket protocol smoke client |
 
 # 4. INSTALL PROFILES
 
@@ -119,19 +118,14 @@ Do not assume a macOS wheel URL from the current lock can install in Linux.
 
 # 8. CURRENT VERIFICATION
 
-The latest clean verification established that the project installs from both the locked editable
-path and a normal wheel, imports from outside the repository, and passes `pip check`. The clean
-runtime dependency closure does not contain NumPy or a server-side vision stack. The Phase 2 image
-build, installed-package smoke, default/non-default port protocol smokes, and non-root/runtime-tooling
-checks pass locally. Docker Scout is wired into the release gate; the current pinned Trixie image has
-one unfixable HIGH zlib CVE-2026-85091, so release evidence remains blocked until the base image is
-fixed or a documented exception is approved.
+The current round removed the unused checkpoint graph dependency. The word pipeline is a bounded
+async state machine implemented with the standard library; all independent provider safety guards
+remain. WebSocket support is now an explicit runtime dependency (formerly supplied transitively
+by the old graph); the installed-package smoke verifies the Uvicorn protocol is available.
+The development lock is re-resolved with constraints retaining every remaining pinned
+version; no replacement graph dependency is added. The Linux container resolves its own production
+closure through the existing script. The repository currently has no committed Linux lock.
 
-# 9. CHANGE LOG
-
-| Date | Change |
-| :--- | :----- |
-| 2026-09-07 | Added direct Anthropic runtime ownership and Phase 2 Linux lock, container smoke, and release-evidence workflow. |
-| 2026-09-15 | Added development-only JSON Schema validation and its locked dependency closure; existing locked versions and production dependencies are unchanged. |
-| 2026-09-06 | Added the opt-in, payload-redacted WebSocket protocol smoke dependency. |
-| 2026-09-06 | Rewritten around the current GlossLattice-only Python package and production dependency boundary. |
+Exact test/wheel/container results are in the workspace root `UPDATE_LOG.md`. Release vulnerability
+scanning and hosted verification must be repeated for the final reviewed image; no old scan result
+is presented as current evidence. Do not enable additional replicas while room state is local.

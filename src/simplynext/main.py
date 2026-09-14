@@ -7,7 +7,6 @@ import logging
 from asyncio import Semaphore
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 import uvicorn
 from fastapi import FastAPI, Header, WebSocket
@@ -17,23 +16,20 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from simplynext import __version__
-from simplynext.api.lattice_websocket import lattice_socket
-from simplynext.api.middleware import RequestBodyLimitMiddleware
+from simplynext.api.middleware import (
+    PrivacyHeadersMiddleware, RequestBodyLimitMiddleware, SocketAdmissionMiddleware,
+)
 from simplynext.api.operator import require_operator_token
 from simplynext.api.room_routes import room_router
 from simplynext.api.room_websocket import room_socket
-from simplynext.api.routes import api_router, health_router
+from simplynext.api.routes import health_router
 from simplynext.config import Settings, get_settings
-from simplynext.lattice_runtime import (
-    LatticeTranslationEngine,
-    build_lattice_translation_engine,
-)
 from simplynext.observability import MetricsRegistry, configure_logging
+from simplynext.provider_runtime import build_provider_client
 from simplynext.rooms.service import RoomService, Translator
 from simplynext.rooms.store import RoomFailure, RoomLimits, RoomStore
 from simplynext.runtime import RuntimeServices
-from simplynext.sessions import EphemeralSessionStore
-from simplynext.translation_runtime import build_word_translation_engine
+from simplynext.translation_runtime import build_word_translation_engine, load_word_policy
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +37,15 @@ logger = logging.getLogger(__name__)
 def create_app(
     settings: Settings | None = None,
     *,
-    lattice_translation: LatticeTranslationEngine | None = None,
     word_translation: Translator | None = None,
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
     configure_logging(runtime_settings.log_level)
-    metrics = lattice_translation.metrics if lattice_translation is not None else MetricsRegistry()
-    lattice_engine = lattice_translation or build_lattice_translation_engine(
-        runtime_settings,
-        metrics,
-    )
-    sessions = EphemeralSessionStore(
-        ttl_seconds=runtime_settings.session_ttl_seconds,
-        max_sessions=runtime_settings.max_active_sessions,
-        websocket_path_template=(f"{runtime_settings.api_prefix}/sessions/{{session_id}}/lattices"),
-        max_lattice_message_bytes=runtime_settings.gloss_lattice_max_message_bytes,
-        max_session_creations_per_minute_global=(
-            runtime_settings.max_session_creations_per_minute_global
-        ),
-        max_lattices_per_session=runtime_settings.max_lattices_per_session,
-        max_lattices_per_minute=runtime_settings.max_lattices_per_minute,
-        max_lattices_per_minute_global=runtime_settings.max_lattices_per_minute_global,
+    if word_translation is None:
+        load_word_policy(runtime_settings)  # Qualification before any provider/preflight I/O.
+    metrics = MetricsRegistry()
+    provider_client = (
+        build_provider_client(runtime_settings, metrics) if word_translation is None else None
     )
     slots = Semaphore(runtime_settings.max_concurrent_agent_runs)
     rooms = RoomService(
@@ -75,10 +59,11 @@ def create_app(
                 invitations_per_minute=runtime_settings.room_invitations_per_minute,
                 invitations_global_per_minute=runtime_settings.room_invitations_global_per_minute,
                 messages_per_minute=runtime_settings.room_messages_per_minute,
-            )
+            ),
+            assembler_token_budget=runtime_settings.context_assembler_token_budget,
+            critic_token_budget=runtime_settings.context_critic_token_budget,
         ),
-        word_translation
-        or build_word_translation_engine(runtime_settings, lattice_engine.provider_client),
+        word_translation or build_word_translation_engine(runtime_settings, provider_client, metrics),
         slots=slots,
         metrics=metrics,
         timeout_seconds=runtime_settings.room_translation_timeout_seconds,
@@ -86,9 +71,6 @@ def create_app(
     )
     services = RuntimeServices(
         settings=runtime_settings,
-        sessions=sessions,
-        lattice_translation=lattice_engine,
-        agent_graph=lattice_engine.agent_graph,
         metrics=metrics,
         agent_slots=slots,
         rooms=rooms,
@@ -104,7 +86,6 @@ def create_app(
             expiry_task.cancel()
             await asyncio.gather(expiry_task, return_exceptions=True)
             await rooms.store.close()
-            await sessions.purge_expired()
 
     is_production = runtime_settings.environment == "production"
     public_docs = not is_production
@@ -122,6 +103,13 @@ def create_app(
         RequestBodyLimitMiddleware,
         max_bytes=runtime_settings.http_max_body_bytes,
         room_prefix=f"{runtime_settings.api_prefix}/rooms",
+        timeout_seconds=runtime_settings.http_body_timeout_seconds,
+    )
+    application.add_middleware(
+        SocketAdmissionMiddleware,
+        maximum=runtime_settings.websocket_max_connections,
+        per_minute=runtime_settings.websocket_connections_per_minute,
+        global_per_minute=runtime_settings.websocket_connections_global_per_minute,
     )
     # Railway terminates TLS upstream, but the app deliberately does not install
     # ProxyHeadersMiddleware or use X-Forwarded-* values for authorization/rate decisions.
@@ -138,8 +126,8 @@ def create_app(
             allow_methods=["GET", "POST", "DELETE"],
             allow_headers=["Authorization", "Content-Type"],
         )
+    application.add_middleware(PrivacyHeadersMiddleware)
     application.include_router(health_router)
-    application.include_router(api_router, prefix=runtime_settings.api_prefix)
     application.include_router(room_router, prefix=runtime_settings.api_prefix)
 
     @application.exception_handler(RoomFailure)
@@ -187,30 +175,15 @@ def create_app(
                 title="SimplyNext Backend - ReDoc",
             )
 
-    @application.websocket(f"{runtime_settings.api_prefix}/sessions/{{session_id}}/lattices")
-    async def stream_lattices(websocket: WebSocket, session_id: UUID) -> None:
-        await lattice_socket(websocket, session_id)
-
     logger.info(
         "startup_configuration environment=%s bedrock_enabled=%s anthropic_enabled=%s "
-        "port=%s max_active_sessions=%s max_session_creations_per_minute_global=%s "
-        "max_lattices_per_session=%s max_lattices_per_minute=%s "
-        "max_lattices_per_minute_global=%s max_concurrent_agent_runs=%s "
-        "docs_public=%s operator_docs_enabled=%s metrics_protected=%s allowed_hosts=%s",
+        "port=%s room_max_active=%s max_concurrent_agent_runs=%s workers=1",
         runtime_settings.environment,
         runtime_settings.bedrock_enabled,
         runtime_settings.anthropic_enabled,
         runtime_settings.port,
-        runtime_settings.max_active_sessions,
-        runtime_settings.max_session_creations_per_minute_global,
-        runtime_settings.max_lattices_per_session,
-        runtime_settings.max_lattices_per_minute,
-        runtime_settings.max_lattices_per_minute_global,
+        runtime_settings.room_max_active,
         runtime_settings.max_concurrent_agent_runs,
-        public_docs,
-        is_production and runtime_settings.operator_docs_enabled,
-        runtime_settings.operator_metrics_token is not None,
-        runtime_settings.allowed_hosts,
     )
 
     return application
@@ -226,6 +199,12 @@ def run() -> None:
         host=settings.host,
         port=settings.port,
         log_config=None,
-        ws_max_size=settings.gloss_lattice_max_message_bytes,
+        access_log=False,
+        proxy_headers=False,
+        ws_max_size=16_384,
+        ws_max_queue=4,
+        ws_per_message_deflate=False,
+        timeout_keep_alive=5,
+        timeout_graceful_shutdown=15,
         workers=1,
     )

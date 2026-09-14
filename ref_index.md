@@ -12,7 +12,9 @@ scratch notes, and third-party repository reports are intentionally not part of 
 | `README.md` | Installation, local operation, API summary, and quality gates |
 | `CLAUDE.md` | Contributor and automation constraints |
 | `plan/ARC_architecture.md` | Implemented backend architecture and trust boundaries |
-| `plan/CTR_contracts.md` | Frozen GlossLattice v1 HTTP/WebSocket contract |
+| `plan/CTR_contracts.md` | Frozen ASL word/room v1 HTTP/WebSocket contract |
+| `plan/WORD_ACCEPTANCE_POLICY.md` | Sentence quality and production evaluation evidence |
+| `plan/WORD_ROOM_V1.md` | Client protocol handoff, retries and recovery |
 | `plan/DEP_dependencies.md` | Python runtime and dependency policy |
 | `plan/PLN_plan.md` | Completed implementation and remaining milestones |
 

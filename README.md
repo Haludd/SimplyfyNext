@@ -1,18 +1,45 @@
-**SIMPLYNEXT BACKEND**
+# SimplyNext backend
 
-The 2026-09-15 word-contract implementation is documented in
-[`plan/WORD_ROOM_V1.md`](plan/WORD_ROOM_V1.md). It adds strict `TranslatedSignUtterance v1`
-ingress, authenticated two-person rooms, immediate signed admission, incremental events,
-complete room-state erasure, and the separate word assembler/critic pipeline. Milestones 1–2
-are implemented and verified locally. Milestone 0's shared artifacts are available in `client/`,
-`src/simplynext/contracts/schemas/` and `tests/fixtures/`; frontend owner sign-off and
-frontend fixture execution remain external acceptance evidence.
+Temporary two-person text/sign rooms with grounded ASL word-to-sentence translation.
+The frontend owns recognition, word translation, camera/audio and speech-to-text. This service
+accepts finalized `TranslatedSignUtterance v1` words or finalized typed/speech text.
 
-Word confidence defaults to safe no-spend repair until a producer-evaluated profile is configured.
-For an explicitly synthetic local demo, with both hosted providers disabled:
+## Implemented
+
+- Strict ASL-only ingress, two participant capabilities, exact sequence/digest replay, bounded
+  HTTP/WebSocket transport and incremental terminal events.
+- Immediate signed HTTP 202 admission, then an independent assembler and critic with at most
+  one revision. Hearing text, controls, retries and rejected evidence make no model calls.
+- Room-owned accepted transcript, recent 10 turns, batched extractive summary, bounded overflow,
+  immutable context and separate assembler/critic prompt budgets.
+- Topic-change-aware sentence acceptance, lexical grounding and a version-bound production
+  evaluation gate. See [acceptance policy](plan/WORD_ACCEPTANCE_POLICY.md).
+- End/expiry/shutdown erase all room-owned content, credentials, replay and pending work.
+  Already-issued synchronous provider calls finish under SDK timeouts and their results are discarded.
+
+Milestones 2–3 and the backend removal exit of milestone 4 are implemented. Frontend execution,
+owner sign-off, representative producer/model qualification and hosted/mobile verification remain
+external acceptance work. The retired session routes return 404. The frozen ingress/events did not change.
+
+## Run locally
+
+Use Python 3.12 (supported range 3.11–3.13) and an editable development install:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+cp .env.example .env
+python main.py
+python scripts/room_protocol_smoke.py --base-url http://127.0.0.1:8000
+```
+
+The default supports typed chat and safe signed repair with no API spending. For a synthetic
+accepted-sentence demo, disable hosted providers and configure:
 
 ```bash
 SIMPLYNEXT_ENVIRONMENT=development \
+SIMPLYNEXT_RECOGNITION_LANGUAGE=asl \
 SIMPLYNEXT_BEDROCK_ENABLED=false SIMPLYNEXT_ANTHROPIC_ENABLED=false \
 SIMPLYNEXT_WORD_POLICY_PATH=data/word_policy.synthetic.json \
 SIMPLYNEXT_WORD_TEMPLATES_PATH=data/word_templates.example.json \
@@ -20,139 +47,42 @@ python main.py
 python scripts/room_protocol_smoke.py --base-url http://127.0.0.1:8000 --templates
 ```
 
-Production refuses the synthetic profile. Room state is process-local: use one worker and one
-replica. Summary compaction remains milestone 3. The documentation below describes the retained
-legacy lattice surface, whose coordinated removal is milestone 4; it is not the new room contract.
+Templates accept reviewed exact sentences only with empty history; contextual judgments require
+an independent provider critic. The synthetic profile cannot qualify production.
+Old local environment files must set `SIMPLYNEXT_RECOGNITION_LANGUAGE=asl` and remove retired
+session/classifier/caption-template settings. No legacy payload is converted internally.
 
-SimplyNext is an uncertainty-aware translation backend for a client-side sign-recognition
-pipeline. The client sends compact, versioned `GlossLattice` JSON. The backend returns exactly one
-terminal outcome per accepted lattice: grounded caption/TTS text or a repair instruction. It does
-not ingest raw camera frames, landmarks, or feature tensors.
+## API and client handoff
 
-# 1. CURRENT STATUS
+| Surface | Purpose |
+| --- | --- |
+| `GET /healthz`, `GET /readyz` | Process and room readiness; reports sentence acceptance separately |
+| `POST /v1/rooms`, `POST /v1/rooms/join` | Create/join a two-person room |
+| `GET /v1/rooms/{code}` | Authenticated full bounded recovery snapshot |
+| `POST /v1/rooms/{code}/messages` | Final typed/speech text |
+| `POST /v1/rooms/{code}/sign-utterances` | Immediate 202 signed admission |
+| `WS /v1/rooms/{code}/events` | First-packet authentication, snapshots, incremental events |
+| `DELETE /v1/rooms/{code}` | Either participant ends and erases the room |
 
-The local backend vertical slice is implemented and tested:
+[WORD_ROOM_V1.md](plan/WORD_ROOM_V1.md) specifies inputs, events, retry/recovery and deletion.
+Generated models are in `client/`; package schemas and canonical/invalid fixtures have a drift check.
+QR invitations contain only the public join path and room code; never embed capabilities.
 
-- strict GlossLattice v1 contracts;
-- ephemeral bearer-authenticated sessions;
-- bounded WebSocket transport with acknowledgement, replay, rate limits, and controls;
-- confidence and producer-profile policy gates;
-- a bounded LangGraph assembler → critic → confident/repair flow;
-- deterministic no-spend mode, optional guarded Amazon Bedrock Converse mode, and an optional
-  direct Anthropic Messages API mode;
-- payload-free structured logs and in-process metrics;
-- unit, integration, and end-to-end protocol tests.
+## Provider and deployment controls
 
-The repository is not yet a hosted production service. The Phase 2 container/package workflow and
-Phase 3 application-side hosting controls are implemented; Railway operator verification, live
-hosted-model verification, and real client integration remain.
-Their committed status is in
-`plan/PLN_plan.md`; the release operator may also maintain the local, Git-ignored
-`plan/BPP_backend_production_plan.md` workbook.
+Both providers default off. Choose one: direct Anthropic (`ANTHROPIC_API_KEY` injected as a secret)
+or Bedrock (standard AWS credential chain). Require the explicit lease owner, verified model prices,
+timeout/retry limits and spend ceiling in `.env.example`. Both use the shared cost guard and access
+preflight. Startup with a hosted provider can incur the small guarded preflight request.
+Production sentence acceptance also requires matching `SIMPLYNEXT_WORD_POLICY_PATH` and
+`SIMPLYNEXT_WORD_EVALUATION_PATH`; invalid qualification fails before provider initialization.
+No configured policy means safe no-spend repair for signed requests, with typed rooms available.
 
-# 2. WHY `src/simplynext/` IS INTENTIONAL
-
-This project uses Python's standard `src` layout. `src/` prevents accidental imports from the
-checkout; `simplynext/` is the stable package namespace. Flattening its children into `src/` would
-create generic top-level packages such as `agent`, `api`, and `contracts`, weaken packaging
-isolation, and require callers to abandon `simplynext.*` imports.
-
-# 3. REQUIREMENTS
-
-- Python 3.11–3.13; Python 3.12 is the tested deployment target.
-- A virtual environment with `pip`.
-- Optional: AWS credentials and Bedrock model access for Bedrock mode.
-- Optional: an Anthropic API key and Anthropic account billing access for direct Anthropic mode.
-
-# 4. INSTALLATION
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-cp .env.example .env
-```
-
-The committed `requirements.txt` delegates to `pyproject.toml`; `pylock.toml` is the macOS
-development lock and `docker/pylock.linux.toml` is the reviewed Linux production lock generated by
-the Phase 2 workflow. Do not commit `.env`, AWS credentials, or an Anthropic API key.
-
-# 5. LOCAL OPERATION
-
-Deterministic mode requires an exact caption-template file for readiness:
-
-```bash
-export SIMPLYNEXT_CAPTION_TEMPLATES_PATH=data/caption_templates.example.json
-python main.py
-```
-
-The defaults expose the service on `http://127.0.0.1:8000`. Useful routes are:
-
-| Method | Path | Purpose |
-| :----- | :--- | :------ |
-| `GET` | `/healthz` | Process liveness |
-| `GET` | `/readyz` | Transport and assembler readiness |
-| `GET` | `/metrics` | In-process counters and latency observations |
-| `GET` | `/docs` | OpenAPI UI for HTTP endpoints |
-| `POST` | `/v1/sessions` | Negotiate a lattice stream and bearer capability |
-| `DELETE` | `/v1/sessions/{session_id}` | End an authenticated session |
-| WebSocket | `/v1/sessions/{session_id}/lattices` | Submit lattices and receive events |
-
-In `SIMPLYNEXT_ENVIRONMENT=production`, `/docs`, `/redoc`, and `/openapi.json` are disabled.
-`/metrics` requires the separate `SIMPLYNEXT_OPERATOR_METRICS_TOKEN`; it is never authenticated
-with a client stream token. Set `SIMPLYNEXT_OPERATOR_DOCS_ENABLED=true` only for short-lived
-operator troubleshooting, together with `SIMPLYNEXT_OPERATOR_DOCS_TOKEN`.
-`SIMPLYNEXT_ALLOWED_HOSTS` must contain the exact public Railway/custom hostname (never `*`), and
-`SIMPLYNEXT_MAX_SESSION_CREATIONS_PER_MINUTE_GLOBAL` bounds unauthenticated session creation.
-The application does not trust `X-Forwarded-For` or other forwarded headers for security decisions;
-configure any proxy trust at the platform boundary and keep the app's host/origin allow-lists exact.
-
-Bedrock and direct Anthropic mode are disabled by default. The local, Git-ignored
-`plan/BPP_backend_production_plan.md` workbook contains the Bedrock enablement procedure and
-operator-specific values when provisioned. Direct Anthropic mode uses the standard
-`ANTHROPIC_API_KEY` process variable and does not use AWS credentials, regions, profiles, or SCPs.
-It still requires explicit per-token pricing in `.env` so the existing spend guard can fail closed.
-
-To run the direct Anthropic path, obtain and verify the values below, then set them in the shell (or
-`.env`, except for the secret API key):
-
-```bash
-export ANTHROPIC_API_KEY='…'  # never commit this value
-export SIMPLYNEXT_BEDROCK_ENABLED=false
-export SIMPLYNEXT_ANTHROPIC_ENABLED=true
-export SIMPLYNEXT_ANTHROPIC_LEASE_OWNER='team-or-person'
-export SIMPLYNEXT_ANTHROPIC_INPUT_USD_PER_MILLION_TOKENS='…'
-export SIMPLYNEXT_ANTHROPIC_OUTPUT_USD_PER_MILLION_TOKENS='…'
-export SIMPLYNEXT_ANTHROPIC_CACHE_WRITE_USD_PER_MILLION_TOKENS='…'
-export SIMPLYNEXT_ANTHROPIC_CACHE_READ_USD_PER_MILLION_TOKENS='…'
-python main.py
-```
-
-`SIMPLYNEXT_ANTHROPIC_MODEL_ID` defaults to the direct-API model identifier and
-`SIMPLYNEXT_ANTHROPIC_API_BASE_URL` defaults to `https://api.anthropic.com`. The cache rates must
-still be numeric when prompt caching is disabled; use the provider's documented zero/unavailable
-value only after verifying it with Anthropic. Anthropic assembler and critic requests use the
-provider's Structured Outputs JSON schema in addition to the repository's strict Pydantic and
-evidence-grounding validation. Phase 1 includes an opt-in, payload-redacted protocol harness at
-`scripts/protocol_smoke.py`; either hosted mode requires `--confirm-live-spend` and never runs as
-part of the normal test suite.
-
-The adapter reads only `ANTHROPIC_API_KEY` from the process environment; a
-`SIMPLYNEXT_ANTHROPIC_API_KEY` setting is intentionally not supported. Export the key in the same
-shell that starts the service (or inject it through the deployment secret manager).
-
-For a running service, the direct-provider smoke command is:
-
-```bash
-python scripts/protocol_smoke.py \
-  --base-url http://127.0.0.1:8000 \
-  --expect-agent-source anthropic_graph \
-  --confirm-live-spend
-```
-
-For production packaging, build the pinned, non-root image and run its deterministic container
-smoke (health/readiness, result/repair, replay, ping, end, and graceful stop):
+Deploy exactly one worker and one replica. State is memory-only and restart loses active rooms.
+Use HTTPS/WSS, exact allowed origins/hosts, Railway's injected `PORT`, `/readyz`, and external
+monitoring. Public docs are disabled in production; `/metrics` needs the separate operator token.
+Access logging is disabled by the runner to avoid request URLs in service logs. Do not enable SDK
+wire debugging. Provider retention is separate from room deletion.
 
 ```bash
 make docker-build IMAGE=simplynext-backend:local
@@ -160,143 +90,28 @@ make container-smoke IMAGE=simplynext-backend:local
 make container-smoke-nondefault IMAGE=simplynext-backend:local
 ```
 
-The image reads Railway's injected `PORT` first and retains `SIMPLYNEXT_PORT` for local settings.
-The smoke script's third argument is the internal application port, so the second command proves a
-non-default port binds on `0.0.0.0`. The final image starts `simplynext-api` directly as the
-unprivileged `simplynext` user, with hosted providers disabled until their secrets and pricing are
-deliberately injected.
+No hosted deployment or physical-device result is implied by local container checks. Before release,
+run the vulnerability/evidence gate from a clean reviewed commit and verify real two-device WSS,
+QR, reconnect, termination, expiry, restart and rollback behavior.
 
-## 5.1 RAILWAY PHASE 3 RUNBOOK
-
-The repository now supplies the application-side controls. The release operator must still perform
-the platform-side deployment and evidence steps:
-
-1. Create/select the Railway project and service, connect the reviewed repository/branch, and
-   deploy the reviewed commit/image. Use the root `Dockerfile`, one replica, and one worker.
-2. Set `SIMPLYNEXT_ENVIRONMENT=production`, `SIMPLYNEXT_HOST=0.0.0.0`, and the exact public value
-   for `SIMPLYNEXT_ALLOWED_HOSTS` (for example `signbridge-production-…up.railway.app`). Set
-   `SIMPLYNEXT_ALLOWED_ORIGINS` to the exact browser origins, or empty for a native-only client.
-   Leave `PORT` to Railway; the image reads it automatically.
-3. Keep diagnostics closed: leave `SIMPLYNEXT_OPERATOR_DOCS_ENABLED=false` and do not set a
-   metrics token unless you have an operator secret store. If metrics are needed, set a random
-   `SIMPLYNEXT_OPERATOR_METRICS_TOKEN` as a sealed Railway variable and retrieve it only with
-   `curl -H 'Authorization: Bearer …' https://HOST/metrics`. Never use a client stream token.
-4. Set `SIMPLYNEXT_MAX_SESSION_CREATIONS_PER_MINUTE_GLOBAL` to the approved abuse budget (the
-   default is 60/minute). Keep one replica/worker because sessions, replay, rate buckets, and
-   metrics are process-local.
-5. Configure `/readyz` as the Railway healthcheck, enable restart-on-failure, and set
-   `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`. Add an external monitor for `/healthz` and `/readyz`.
-6. For the current direct Anthropic deployment, set `SIMPLYNEXT_BEDROCK_ENABLED=false`,
-   `SIMPLYNEXT_ANTHROPIC_ENABLED=true`, the four `SIMPLYNEXT_ANTHROPIC_*_USD_PER_MILLION_TOKENS`
-   prices, `SIMPLYNEXT_ANTHROPIC_LEASE_OWNER`, and sealed `ANTHROPIC_API_KEY`. Do not add AWS
-   credentials or Bedrock variables. The Anthropic model ID must be approved for the account.
-7. After HTTPS is issued, verify `/healthz` and `/readyz`, confirm `/docs`, `/redoc`, and
-   `/openapi.json` return 404, run the redacted protocol smoke against the public URL with
-   `--expect-agent-source anthropic_graph --confirm-live-spend`, then exercise a restart and a
-   rollback. Record the deployed commit/image digest, timestamps, and expected in-memory session
-   loss during restart/rollback.
-
-Do not call Phase 3 complete until the Railway logs show the redacted `startup_configuration` line,
-the public WSS smoke passes, monitoring/alerts are active, and restart/rollback evidence is stored.
-
-Linux dependency resolution is intentionally separate from the macOS ARM `pylock.toml`:
+## Quality gates
 
 ```bash
-# Run on Python 3.12 Linux (or in a Linux CI job).
-PYTHON_BIN=python3.12 UPDATE_LINUX_LOCK=1 make production-lock
-# Review and commit docker/pylock.linux.toml; CI/default runs fail if it is missing or changes.
-```
-
-After a reviewed image is built, retain the quality output, then emit release evidence and attach
-the generated Scout report and test-result file to the release record:
-
-```bash
-set -o pipefail
-make quality 2>&1 | tee release-test-results.txt
-TEST_RESULTS_PATH=release-test-results.txt \
-  make release-evidence IMAGE=simplynext-backend:local
-```
-
-`release_evidence.sh` requires a clean source tree and that retained test-result file; it records
-the source SHA, image digest/content ID, image build timestamp, Python version, runtime installer
-status, runtime dependency inventory, test-result hash, and vulnerability policy. The hardened image
-strips `pip` after installation, so the evidence records that deliberate absence. A Docker Scout
-finding at CRITICAL or HIGH severity blocks evidence generation; the scan report is written next to
-the JSON evidence file.
-
-# 6. DATA FLOW
-
-```text
-client classifier
-  -> POST /v1/sessions
-  -> authenticated WSS connection
-  -> GlossLattice JSON
-  -> schema/policy/session checks
-  -> bounded assembler and independent critic
-  -> lattice_result OR lattice_repair_required JSON
-  -> client caption UI / local TTS / repair UI
-```
-
-The server sends text and evidence as JSON over the WebSocket. `tts_text` is text intended for the
-client's speech synthesizer; the server does not send an audio file or audio stream. The
-`evidence_trace` is an ordered audit copy of the lattice slots, resolved glosses, confidence,
-provenance, and retained candidates that supported the decision.
-
-# 7. QUALITY GATES
-
-```bash
-python -m pytest
+python -m pytest -q
 python -m ruff check .
 python -m mypy src scripts
 python -m pip check
+python scripts/export_word_contract.py --check
 ```
 
-The current verified baseline is 165 passing tests, Ruff clean, strict mypy clean, and a valid
-installed dependency set. Re-run the gates after every change; the number of tests may increase.
+Packaging changes also require a normal wheel installed in a clean temporary environment and
+`scripts/package_smoke.py data/word_templates.example.json` run outside the checkout.
 
-# 8. REPOSITORY MAP
+## Documents
 
-```text
-SimplyNext/
-├── src/simplynext/             installable Python package
-│   ├── agent/                  graph, hosted-model adapters, prompts, and read-only tools
-│   ├── api/                    HTTP/WebSocket handlers and middleware
-│   ├── contracts/              strict public wire models
-│   ├── observability/          structured logging and in-process metrics
-│   ├── sessions/               bounded process-local session/replay state
-│   ├── config.py               environment-backed settings
-│   ├── lattice_runtime.py      policy and graph-to-event adapter
-│   ├── main.py                 FastAPI factory and runtime command
-│   └── runtime.py              service container
-├── tests/                      contract, unit, integration, and transport tests
-├── scripts/                    explicit operational smoke commands
-├── data/                       deterministic caption-template example
-├── plan/                       maintained backend documents
-├── Dockerfile                  pinned multi-stage Linux production image
-├── .dockerignore               production build context boundary
-├── docker/requirements-production.in
-│                                direct runtime requirements for Linux resolution
-├── docker/pylock.linux.toml    reviewed Linux production lock (generated on Linux, when committed)
-├── Makefile                    quality, packaging, container, and evidence targets
-├── pyproject.toml              dependencies, packaging, and tool configuration
-├── pylock.toml                 resolved dependency lock
-├── requirements.txt            editable install entry point
-└── main.py                     checkout-compatible application entry point
-```
-
-# 9. DESIGN CONSTRAINTS
-
-- Unknown fields and invalid contract values are rejected.
-- Low confidence, ambiguity, model failure, and invalid output fail closed to repair.
-- Prompts and model outputs are never trusted as contracts until parsed and grounded.
-- Session tokens are opaque capabilities and must remain in memory on the client.
-- Session/checkpoint state is process-local, so production starts with one worker and one replica.
-- Horizontal scaling requires shared session, replay, rate-limit, and checkpoint storage first.
-
-# 10. DOCUMENTATION
-
-- `plan/ARC_architecture.md` — implemented architecture.
-- `plan/CTR_contracts.md` — wire contract.
-- `plan/DEP_dependencies.md` — dependency policy.
-- `plan/PLN_plan.md` — implementation status.
-- `plan/BPP_backend_production_plan.md` — local ignored production workbook; never commit its values.
+- [Architecture](plan/ARC_architecture.md), [contracts](plan/CTR_contracts.md),
+  [implementation status](plan/PLN_plan.md), [dependency policy](plan/DEP_dependencies.md).
+- Root `CODEX_PROMPT.md`, `PLN_plan_v1.md`, `TRANSLATED_SIGN_UTTERANCE_V1.md` and `UPDATE_LOG.md`
+  govern this implementation round.
+- The ignored `plan/BPP_backend_production_plan.md` is a private historical operator workbook;
+  reconcile it with this runtime before operating. Never commit filled secret/hosting values.

@@ -24,11 +24,6 @@ docker run --detach --rm \
   --env SIMPLYNEXT_BEDROCK_ENABLED=false \
   --env SIMPLYNEXT_ANTHROPIC_ENABLED=false \
   --env SIMPLYNEXT_OPERATOR_METRICS_TOKEN \
-  --env SIMPLYNEXT_RECOGNITION_LANGUAGE=sgsl \
-  --env SIMPLYNEXT_LATTICE_CLASSIFIER_ID=temporal_classifier \
-  --env SIMPLYNEXT_LATTICE_CLASSIFIER_VERSION=1.3.0 \
-  --env SIMPLYNEXT_LATTICE_CALIBRATION_VERSION=temperature_v2 \
-  --env SIMPLYNEXT_LATTICE_VOCABULARY_VERSION=sgsl_demo_v1 \
   "${image}" >/dev/null
 
 python - "http://127.0.0.1:${host_port}" <<'PY'
@@ -54,15 +49,6 @@ while time.monotonic() < deadline:
 else:
     raise SystemExit("container did not become healthy")
 PY
-
-python scripts/protocol_smoke.py \
-  --base-url "http://127.0.0.1:${host_port}" \
-  --language sgsl \
-  --classifier-id temporal_classifier \
-  --classifier-version 1.3.0 \
-  --calibration-version temperature_v2 \
-  --vocabulary-version sgsl_demo_v1 \
-  --expect-agent-source deterministic_template
 
 python scripts/room_protocol_smoke.py --base-url "http://127.0.0.1:${host_port}"
 

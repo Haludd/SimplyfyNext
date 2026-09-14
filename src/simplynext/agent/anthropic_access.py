@@ -16,106 +16,6 @@ from typing import Any, Protocol, cast
 
 import httpx
 
-# Anthropic structured outputs constrain the model's direct text response to JSON.  These
-# deliberately describe only the wire shape; the existing Pydantic models still perform the
-# authoritative semantic, grounding, and cross-field validation after the response is received.
-_ASSEMBLER_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "schema_version": {"type": "string", "const": "1.0"},
-        "utterance_id": {"type": "string", "minLength": 1, "maxLength": 128},
-        "language": {"type": "string", "enum": ["sgsl", "asl"]},
-        "candidate_text": {"type": "string", "minLength": 1, "maxLength": 12_288},
-        "parts": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 64,
-            "items": {
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "kind": {"type": "string", "const": "supported_text"},
-                            "text": {"type": "string", "minLength": 1, "maxLength": 160},
-                            "evidence": {
-                                "type": "array",
-                                "minItems": 1,
-                                "maxItems": 64,
-                                "items": {
-                                    "type": "object",
-                                    "additionalProperties": False,
-                                    "properties": {
-                                        "slot_id": {"type": "string", "minLength": 1},
-                                        "gloss_id": {"type": "string", "minLength": 1},
-                                    },
-                                    "required": ["slot_id", "gloss_id"],
-                                },
-                            },
-                        },
-                        "required": ["kind", "text", "evidence"],
-                    },
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "kind": {"type": "string", "const": "gap"},
-                            "slot_id": {"type": "string", "minLength": 1},
-                            "reason": {
-                                "type": "string",
-                                "enum": ["unresolved_input", "translation_abstained"],
-                            },
-                        },
-                        "required": ["kind", "slot_id", "reason"],
-                    },
-                ]
-            },
-        },
-    },
-    "required": ["schema_version", "utterance_id", "language", "candidate_text", "parts"],
-}
-
-_CRITIC_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "schema_version": {"type": "string", "const": "1.0"},
-        "utterance_id": {"type": "string", "minLength": 1, "maxLength": 128},
-        "supported": {"type": "boolean"},
-        "token_assessments": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 512,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "token_index": {"type": "integer", "minimum": 0, "exclusiveMaximum": 512},
-                    "token": {"type": "string", "minLength": 1, "maxLength": 160},
-                    "supported": {"type": "boolean"},
-                    "evidence": {
-                        "type": "array",
-                        "maxItems": 64,
-                        "items": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "slot_id": {"type": "string", "minLength": 1},
-                                "gloss_id": {"type": "string", "minLength": 1},
-                            },
-                            "required": ["slot_id", "gloss_id"],
-                        },
-                    },
-                    "reason": {"type": "string", "minLength": 1, "maxLength": 240},
-                },
-                "required": ["token_index", "token", "supported", "evidence", "reason"],
-            },
-        },
-    },
-    "required": ["schema_version", "utterance_id", "supported", "token_assessments"],
-}
-
 
 class AnthropicConfigurationError(RuntimeError):
     """Raised when direct Anthropic mode is not configured safely."""
@@ -247,13 +147,7 @@ def _structured_output_config(raw_metadata: object) -> dict[str, Any] | None:
         # full schema in the local parser and system rules; send the SDK-supported
         # projection to the provider grammar compiler.
         return {"format": {"type": "json_schema", "schema": transform_schema(model)}}
-    schema = {
-        "assembler": _ASSEMBLER_OUTPUT_SCHEMA,
-        "critic": _CRITIC_OUTPUT_SCHEMA,
-    }.get(role)
-    if schema is None:
-        return None
-    return {"format": {"type": "json_schema", "schema": schema}}
+    return None
 
 
 def _system_to_anthropic(raw_system: object) -> list[dict[str, Any]]:
@@ -349,9 +243,7 @@ def _content_block_to_anthropic(raw_block: object) -> dict[str, Any]:
                 result_blocks.append(
                     {
                         "type": "text",
-                        "text": json.dumps(
-                            item["json"], ensure_ascii=True, separators=(",", ":")
-                        ),
+                        "text": json.dumps(item["json"], ensure_ascii=True, separators=(",", ":")),
                     }
                 )
             else:

@@ -90,17 +90,6 @@ url = "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8
 sha256 = "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
 
 [[packages]]
-name = "charset-normalizer"
-version = "3.5.1"
-
-[[packages.wheels]]
-name = "charset_normalizer-3.5.1-cp312-cp312-macosx_10_13_universal2.whl"
-url = "https://files.pythonhosted.org/packages/30/27/78873dc8b6a56357517b74b6bb9568b80450e7bb4f6ef7e3fa9d22aa0bd7/charset_normalizer-3.5.1-cp312-cp312-macosx_10_13_universal2.whl"
-
-[packages.wheels.hashes]
-sha256 = "5b6d1386bf0096d26d3a863dc0a487a5b4eb9aa93cf5ba69683d29dde6b9d60f"
-
-[[packages]]
 name = "click"
 version = "8.5.0"
 
@@ -167,17 +156,6 @@ url = "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a
 sha256 = "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"
 
 [[packages]]
-name = "httpcore2"
-version = "2.12.0"
-
-[[packages.wheels]]
-name = "httpcore2-2.12.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/d2/74/d370e55600d9bcfa0d9794b0166126d49291a3d2b20c268fc98c453a4948/httpcore2-2.12.0-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "7e04258ce01013d7d615e5b910a3b27fac937d7a95038227e79652b4ba3b4ceb"
-
-[[packages]]
 name = "httpx"
 version = "0.28.1"
 
@@ -187,17 +165,6 @@ url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e5
 
 [packages.wheels.hashes]
 sha256 = "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"
-
-[[packages]]
-name = "httpx2"
-version = "2.12.0"
-
-[[packages.wheels]]
-name = "httpx2-2.12.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/c8/95/411ba65569158e862368917aaf56597f3e5fa3b91b0502919638465a08f3/httpx2-2.12.0-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "cc8b6eecb8661c146b8f89a60e97456ee086e91a784ed31ac450c3a9e613dd36"
 
 [[packages]]
 name = "idna"
@@ -244,28 +211,6 @@ url = "https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885
 sha256 = "a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64"
 
 [[packages]]
-name = "jsonpatch"
-version = "1.33"
-
-[[packages.wheels]]
-name = "jsonpatch-1.33-py2.py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/73/07/02e16ed01e04a374e644b575638ec7987ae846d25ad97bcc9945a3ee4b0e/jsonpatch-1.33-py2.py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade"
-
-[[packages]]
-name = "jsonpointer"
-version = "3.1.1"
-
-[[packages.wheels]]
-name = "jsonpointer-3.1.1-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/9e/6a/a83720e953b1682d2d109d3c2dbb0bc9bf28cc1cbc205be4ef4be5da709d/jsonpointer-3.1.1-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca"
-
-[[packages]]
 name = "jsonschema"
 version = "4.26.0"
 
@@ -286,83 +231,6 @@ url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8ced
 
 [packages.wheels.hashes]
 sha256 = "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe"
-
-[[packages]]
-name = "langchain-core"
-version = "1.6.2"
-
-[[packages.wheels]]
-name = "langchain_core-1.6.2-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/a8/62/d3fb7c215cb2f237c3fe84880bf347a38deafef6033b6d5f1339ba8ca401/langchain_core-1.6.2-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "21e6c7cf097c68b777fd69ea00864f09bd9ca76ac73e3e3fa14e1ee366eb4711"
-
-[[packages]]
-name = "langchain-protocol"
-version = "0.0.19"
-
-[[packages.wheels]]
-name = "langchain_protocol-0.0.19-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/80/c9/f6cbf357d48ccbd18bb394433b1fd7ad9be004eed9377ad08bb85777e5e6/langchain_protocol-0.0.19-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "4cdf879a492a35980fd859ae792d3c65458ccaae504e183c9a10d7eac1f0720f"
-
-[[packages]]
-name = "langgraph"
-version = "1.2.11"
-
-[[packages.wheels]]
-name = "langgraph-1.2.11-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/0a/7f/c5c30e4be99ff821029c7ac872a480676bb179c9f3df85ea3f38d13f86d4/langgraph-1.2.11-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "8bab70de7b2d00b5300fb289bcf38d8b241400f3184c1e95e8ce706fb0e8686b"
-
-[[packages]]
-name = "langgraph-checkpoint"
-version = "4.2.0"
-
-[[packages.wheels]]
-name = "langgraph_checkpoint-4.2.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/05/71/3b475f09bd57d3a5649792c66353312b4432afd843f301739dfcebd157f0/langgraph_checkpoint-4.2.0-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "0547fd228935a0b758865de3a3d6d7a2537c308895d0f9ab092ce9151b5da942"
-
-[[packages]]
-name = "langgraph-prebuilt"
-version = "1.1.0"
-
-[[packages.wheels]]
-name = "langgraph_prebuilt-1.1.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/e9/43/3fe1a700b8490ed02679cdbbc8c915eb23a092faf496c9c1118abcd10be3/langgraph_prebuilt-1.1.0-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "51e311747d755b751d5c6b39b0c1446124d3a7643d2515017e6714b323508fc9"
-
-[[packages]]
-name = "langgraph-sdk"
-version = "0.4.4"
-
-[[packages.wheels]]
-name = "langgraph_sdk-0.4.4-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/43/d5/2ad7f3a835c6fcebf58b6669552536ecd52d2dfe4cf49c6c36648fd83572/langgraph_sdk-0.4.4-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "39afe416c91742925e6f8a93715f566d499b36e1b636b804a4ffe3190e4f4e64"
-
-[[packages]]
-name = "langsmith"
-version = "0.12.2"
-
-[[packages.wheels]]
-name = "langsmith-0.12.2-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/0a/e1/5c751a0f1a14de49f19a2ebc0f5dfadfaf04a07f245c5f749ec31f263715/langsmith-0.12.2-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "ca2b6386cf452cf8edebf27c9c476503c18bad895e7ad566578393fa0ba7fea2"
 
 [[packages]]
 name = "librt"
@@ -396,28 +264,6 @@ url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933
 
 [packages.wheels.hashes]
 sha256 = "1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505"
-
-[[packages]]
-name = "orjson"
-version = "3.12.0"
-
-[[packages.wheels]]
-name = "orjson-3.12.0-cp312-cp312-macosx_15_0_arm64.whl"
-url = "https://files.pythonhosted.org/packages/29/98/758cf90fbeaaafb7f8141bfac75a432099959f3a2f5db93a412e876415d8/orjson-3.12.0-cp312-cp312-macosx_15_0_arm64.whl"
-
-[packages.wheels.hashes]
-sha256 = "11edb4660a6680abee9788a3a9072208a2c96538cc1322bd79542065229d8e54"
-
-[[packages]]
-name = "ormsgpack"
-version = "1.12.2"
-
-[[packages.wheels]]
-name = "ormsgpack-1.12.2-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl"
-url = "https://files.pythonhosted.org/packages/4c/36/16c4b1921c308a92cef3bf6663226ae283395aa0ff6e154f925c32e91ff5/ormsgpack-1.12.2-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl"
-
-[packages.wheels.hashes]
-sha256 = "7a29d09b64b9694b588ff2f80e9826bdceb3a2b91523c5beae1fab27d5c940e7"
 
 [[packages]]
 name = "packaging"
@@ -541,17 +387,6 @@ url = "https://files.pythonhosted.org/packages/0d/17/c5c6b53ddc18f297992099b3d9e
 sha256 = "904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9"
 
 [[packages]]
-name = "pyyaml"
-version = "6.0.3"
-
-[[packages.wheels]]
-name = "pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl"
-url = "https://files.pythonhosted.org/packages/89/a0/6cf41a19a1f2f3feab0e9c0b74134aa2ce6849093d5517a0c550fe37a648/pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl"
-
-[packages.wheels.hashes]
-sha256 = "fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0"
-
-[[packages]]
 name = "referencing"
 version = "0.37.0"
 
@@ -561,28 +396,6 @@ url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5
 
 [packages.wheels.hashes]
 sha256 = "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231"
-
-[[packages]]
-name = "requests"
-version = "2.34.2"
-
-[[packages.wheels]]
-name = "requests-2.34.2-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
-
-[[packages]]
-name = "requests-toolbelt"
-version = "1.0.0"
-
-[[packages.wheels]]
-name = "requests_toolbelt-1.0.0-py2.py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/3f/51/d4db610ef29373b879047326cbf6fa98b6c1969d6f6dc423279de2b1be2c/requests_toolbelt-1.0.0-py2.py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06"
 
 [[packages]]
 name = "rpds-py"
@@ -658,28 +471,6 @@ url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da
 sha256 = "a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c"
 
 [[packages]]
-name = "tenacity"
-version = "9.1.4"
-
-[[packages.wheels]]
-name = "tenacity-9.1.4-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55"
-
-[[packages]]
-name = "truststore"
-version = "0.10.4"
-
-[[packages.wheels]]
-name = "truststore-0.10.4-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981"
-
-[[packages]]
 name = "typing-extensions"
 version = "4.16.0"
 
@@ -713,17 +504,6 @@ url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a
 sha256 = "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897"
 
 [[packages]]
-name = "uuid-utils"
-version = "0.17.0"
-
-[[packages.wheels]]
-name = "uuid_utils-0.17.0-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl"
-url = "https://files.pythonhosted.org/packages/20/80/a7e685968e3cec99d6fe2fb25d0f5726310e1bba356da68c13dfd8b7d140/uuid_utils-0.17.0-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl"
-
-[packages.wheels.hashes]
-sha256 = "9205068badf453d2f0821fd5d340389b4679992d7ff79d4f3e5608996dd1b287"
-
-[[packages]]
 name = "uvicorn"
 version = "0.52.4"
 
@@ -744,25 +524,3 @@ url = "https://files.pythonhosted.org/packages/73/e3/fe2d498c64dea0095c9a9f9a351
 
 [packages.wheels.hashes]
 sha256 = "01fbdcbac298efe19360b94bc0039c8f746f0220ba570f327577bfee81059175"
-
-[[packages]]
-name = "xxhash"
-version = "4.0.1"
-
-[[packages.wheels]]
-name = "xxhash-4.0.1-cp312-cp312-macosx_11_0_arm64.whl"
-url = "https://files.pythonhosted.org/packages/75/c9/cf736f6db8c3273af18925061572db0d4357818a9ce425f4b5fb0021918e/xxhash-4.0.1-cp312-cp312-macosx_11_0_arm64.whl"
-
-[packages.wheels.hashes]
-sha256 = "515a822c73abbf6a0b7c70976d9662be342835c9d78b8dc7c023411f39c35dbc"
-
-[[packages]]
-name = "zstandard"
-version = "0.25.0"
-
-[[packages.wheels]]
-name = "zstandard-0.25.0-cp312-cp312-macosx_11_0_arm64.whl"
-url = "https://files.pythonhosted.org/packages/aa/1c/d920d64b22f8dd028a8b90e2d756e431a5d86194caa78e3819c7bf53b4b3/zstandard-0.25.0-cp312-cp312-macosx_11_0_arm64.whl"
-
-[packages.wheels.hashes]
-sha256 = "913cbd31a400febff93b564a23e17c3ed2d56c064006f54efec210d586171c00"

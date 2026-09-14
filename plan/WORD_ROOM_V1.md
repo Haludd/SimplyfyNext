@@ -1,9 +1,9 @@
 # Word contract and room protocol decision record
 
-Implemented 2026-09-15 for root `PLN_plan_v1.md` sections 4–5 and milestones 0–2.
+Implemented 2026-09-15 for root `PLN_plan_v1.md` sections 4–7 and backend milestones 0–4.
 The root `TRANSLATED_SIGN_UTTERANCE_V1.md` remains the normative ingress authority.
-This record covers the new ASL room path. The older lattice path remains during the
-controlled migration; its coordinated removal is milestone 4.
+This record covers the only ASL room runtime. The retired session endpoints are absent.
+Current acceptance details are in [WORD_ACCEPTANCE_POLICY.md](WORD_ACCEPTANCE_POLICY.md).
 
 ## Contract handoff
 
@@ -98,14 +98,14 @@ primary or alternative words become deterministic repairs before provider dispat
 means admitted signed messages safely repair with `policy_unconfigured` and no model calls.
 
 `data/word_policy.synthetic.json` is only synthetic test data, not a PopSign vocabulary authority
-or empirical calibration. Production startup explicitly refuses its `synthetic_evaluation` purpose.
+or empirical calibration. Production startup explicitly refuses its `synthetic_evaluation` purpose and requires matching
+reviewed evidence for any `producer_evaluated` policy.
 The vocabulary is intentionally limited to examples used by local tests.
 
-The new `agent/words/` pipeline replaces lattice evidence for room requests with immutable word
+The `agent/words/` pipeline receives immutable word
 tokens, producer scores and context. Its stateless bounded state machine calls the assembler and
-independent critic separately. There are no tools, memory mutations, provider chat history, lattice
-conversion or persisted graph checkpoints in this path. The same long-lived cost-guarded provider
-client is shared with the existing runtime; direct Anthropic and Bedrock retain their pricing,
+independent critic separately. There are no tools, memory mutations, provider chat history or persisted graph checkpoints. One long-lived cost-guarded provider
+client serves the word pipeline; direct Anthropic and Bedrock retain their pricing,
 preflight, token usage, retry/timeout and spend guards. Word output schemas are generated from
 Pydantic; the cost bound includes the direct provider's additional structured-output schema.
 The direct adapter applies the SDK's `transform_schema` before `messages.create`, retaining full
@@ -124,7 +124,7 @@ Any remaining failure repairs without provider text or draft leakage.
 This gate deliberately restricts paraphrases. Articles and present be auxiliaries are allowed only
 when semantically licensed; the critic must reject grammatical additions that change meaning.
 Deterministic mode uses reviewed exact word tuples in `SIMPLYNEXT_WORD_TEMPLATES_PATH` and a separate
-template critic. Five synthetic positive examples and adversarial unit cases exercise reorderings,
+template critic. Contextual template requests repair because templates cannot judge history. Five synthetic positive examples and adversarial unit cases exercise reorderings,
 article insertion and grounding; they are not a claim of clinical or production translation quality.
 
 ## Lifecycle and context boundary
@@ -149,13 +149,13 @@ provider concurrency permits are retained until completion. SDK request buffers 
 then. Erasing room state does not erase provider-side retention. Tests exercise end during all four
 possible model stages, admission, replay, queued work and expiry.
 
-The application builds context from at most the latest 10 accepted room messages and aliases,
-with an empty summary until compaction is implemented. Repairs, drafts, controls and retries never
-become context turns. The critic gets only the last two accepted turns. The context object has a
-96,000-byte hard ceiling covering worst-case UTF-8 input; compact token budgeting, accepted overflow,
-summary compaction and 240-turn coherence evaluation remain milestone 3. The asynchronous admission
-and deletion primitives required by section 4 are already implemented, without claiming milestone
-3's compaction exit criteria.
+The room stores the canonical accepted transcript, recent 10 verbatim turns, a compact extractive
+summary and at most 20 overflow turns. Every 10 evictions schedule asynchronous compaction after
+publication; stalls/failures use bounded extraction. Watermark/generation checks reject stale work,
+including a signed result completing out of order. All context is erased by the same room end path.
+Assembler and critic projections have separate conservative token bounds and explicitly mark
+excerpts for extreme input sizes. See [architecture](ARC_architecture.md) for exact budgets and
+summary limitations. Context tests cover 60/120/240 turns and summary/translation deletion races.
 
 ## Verification and migration
 
@@ -165,7 +165,8 @@ zero-score no-spend repair, both event subscribers, replay, reconnect and deleti
 profile and example templates configured in development, `--templates` also checks accepted word
 assembly and refuses a readiness response identifying a hosted provider.
 
-`scripts/container_smoke.sh` now runs both the existing lattice regression smoke and this room smoke.
-The package smoke checks all four prompts and both packaged v1 schemas. The old lattice schema,
-tests, SgSL examples and routes remain solely for the explicitly deferred milestone 4 cutover.
-No stale root frontend files or prototype source files are modified.
+`scripts/container_smoke.sh` runs only the room protocol. The package smoke checks both word prompts,
+both v1 schemas, parsed templates and absence of retired runtime files. Backend contract tests
+assert the old session endpoint is absent and non-ASL startup is rejected. The generated client
+handoff is unchanged; execution against the current frontend and owner sign-off are still pending.
+No stale root frontend or prototype source files were read or modified in this round.

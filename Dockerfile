@@ -37,7 +37,7 @@ RUN if [ -f docker/pylock.linux.toml ]; then \
     && python -m pip install --no-cache-dir --no-deps . \
     && python -m pip check \
     && cd /tmp \
-    && python /tmp/package_smoke.py /build/data/caption_templates.example.json
+    && python /tmp/package_smoke.py /build/data/word_templates.example.json
 
 # pip is only a build/install tool. Remove it from the copied venv so the final
 # runtime does not carry pip's vendored packages or an unnecessary installer.
@@ -54,8 +54,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SIMPLYNEXT_ENVIRONMENT=production \
     SIMPLYNEXT_HOST=0.0.0.0 \
     SIMPLYNEXT_BEDROCK_ENABLED=false \
-    SIMPLYNEXT_ANTHROPIC_ENABLED=false \
-    SIMPLYNEXT_CAPTION_TEMPLATES_PATH=/app/data/caption_templates.example.json
+    SIMPLYNEXT_ANTHROPIC_ENABLED=false
 
 WORKDIR /app
 RUN groupadd --system simplynext \
@@ -65,7 +64,7 @@ RUN groupadd --system simplynext \
         /usr/local/lib/python3.12/site-packages/pip-*.dist-info
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --chown=simplynext:simplynext data/caption_templates.example.json /app/data/caption_templates.example.json
+COPY --chown=simplynext:simplynext data/word_templates.example.json /app/data/word_templates.example.json
 
 USER simplynext
 EXPOSE 8000

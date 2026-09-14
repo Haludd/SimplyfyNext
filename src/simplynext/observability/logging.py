@@ -7,26 +7,23 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-_STANDARD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__)
-
-
 class JsonFormatter(logging.Formatter):
-    """Emit compact JSON with only explicitly attached scalar context."""
+    """Only application-authored messages; no SDK wire logs or exception strings."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": (
+                record.getMessage() if record.name.startswith("simplynext.")
+                else "external_log_suppressed"
+            ),
         }
-        for key, value in record.__dict__.items():
-            if key in _STANDARD_FIELDS or key.startswith("_"):
-                continue
-            if isinstance(value, (str, int, float, bool)) or value is None:
-                payload[key] = value
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception_type"] = (
+                record.exc_info[0].__name__ if record.exc_info[0] else "unknown"
+            )
         return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -39,3 +36,5 @@ def configure_logging(level: str = "INFO") -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level.upper())
+    for name in ("anthropic", "httpx", "httpcore", "boto3", "botocore", "urllib3"):
+        logging.getLogger(name).setLevel(logging.WARNING)

@@ -115,7 +115,12 @@ class WordProvider:
             modelId=self.model_id,
             system=[{"text": prompt}],
             messages=[
-                {"role": "user", "content": [{"text": json.dumps(payload, ensure_ascii=True)}]}
+                {
+                    "role": "user",
+                    "content": [
+                        {"text": json.dumps(payload, ensure_ascii=True, separators=(",", ":"))}
+                    ],
+                }
             ],
             inferenceConfig={"maxTokens": 2200 if role == "assembler" else 300, "temperature": 0.0},
             requestMetadata={
@@ -152,7 +157,7 @@ class ProviderWordAssembler:
         verdict: WordVerdict | None,
     ) -> WordDraft:
         payload: dict[str, Any] = {
-            "reference_context": context.model_dump(mode="json", exclude={"room_id"}),
+            "reference_context": context.assembler_view(),
             "current_evidence": {
                 "producer": utterance.producer.model_dump(mode="json"),
                 "words": [word.model_dump(mode="json") for word in utterance.words],

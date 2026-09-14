@@ -2167,17 +2167,6 @@ class DictionaryScreen extends StatelessWidget {
   );
 
   void _openFlow(BuildContext context) {
-    if (!controller.calibrated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Complete camera calibration before recording a custom sign.',
-          ),
-        ),
-      );
-      controller.navigate(SignBridgePage.onboarding);
-      return;
-    }
     Navigator.push(
       context,
       MaterialPageRoute<void>(

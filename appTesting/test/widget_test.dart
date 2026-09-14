@@ -78,4 +78,32 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets(
+    'allows adding a personal sign without completing onboarding calibration',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final controller = AppController(
+        LocalStateService(preferences),
+        DemoTrackingService(),
+        DeviceAccessService(),
+      );
+
+      await tester.pumpWidget(SignBridgeApp(controller: controller));
+      await tester.pumpAndSettle();
+      final mySigns = find.text('My signs');
+      await tester.ensureVisible(mySigns);
+      await tester.tap(mySigns);
+      await tester.pumpAndSettle();
+      final addCustomSign = find.text('Add custom sign');
+      await tester.ensureVisible(addCustomSign);
+      await tester.tap(addCustomSign);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Teach SignBridge a sign'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+    },
+  );
 }

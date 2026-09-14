@@ -24,6 +24,20 @@ void main() {
     },
   );
 
+  test('matches an ordinary variation of a saved personal sign', () {
+    final sign = _sign('kopi', _sequence(12, offset: .10));
+
+    final match = matcher.match(
+      sequence: _sequence(18, offset: .24),
+      signs: <CustomSign>[sign],
+      language: 'SgSL',
+    );
+
+    expect(match, isNotNull);
+    expect(match!.label, 'kopi');
+    expect(match.confidence, greaterThanOrEqualTo(.55));
+  });
+
   test('does not match a different language or a distant movement', () {
     final sign = _sign('kopi', _sequence(10, offset: .10));
 

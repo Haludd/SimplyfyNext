@@ -721,7 +721,9 @@ class _LivePreviewOverlay extends StatelessWidget {
         controller.isBackendConnected ||
         controller.backendStatus.startsWith('Backend') ||
         controller.backendStatus.startsWith('Local ASL') ||
-        controller.backendStatus.startsWith('Glosses sent');
+        controller.backendStatus.startsWith('Captured') ||
+        controller.backendStatus.startsWith('Submitting') ||
+        controller.backendStatus.startsWith('Utterance');
     final status = !controller.devices.cameraReady
         ? 'CAMERA OFF'
         : backendProcessing
@@ -1552,6 +1554,8 @@ class LiveTranslatorScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
+          _TranslatedUtteranceCard(controller: controller),
+          const SizedBox(height: 18),
           _SpeechCaptionCard(controller: controller),
           const SizedBox(height: 18),
           _ActionDock(controller: controller),
@@ -1626,6 +1630,234 @@ class _ViewToggle extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _TranslatedUtteranceCard extends StatelessWidget {
+  const _TranslatedUtteranceCard({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final words = controller.translatedWords;
+    final wordCount = controller.translatedWordCount;
+    final retry = controller.hasPendingUtteranceRetry;
+    final sending = controller.isUtteranceSubmissionInFlight;
+    final roomConfigured = controller.isUtteranceSubmissionConfigured;
+    final actionLabel = sending
+        ? 'Submitting…'
+        : retry
+        ? 'Retry final utterance'
+        : wordCount == 0
+        ? 'Translate utterance'
+        : 'Translate $wordCount word${wordCount == 1 ? '' : 's'}';
+
+    return GlassCard(
+      padding: const EdgeInsets.all(15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(Icons.format_quote_outlined, color: _cyan, size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'SIGN UTTERANCE',
+                style: TextStyle(
+                  color: _cyan,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              const Spacer(),
+              _StatusPill(
+                label: retry
+                    ? 'RETRY READY'
+                    : roomConfigured
+                    ? 'LOCAL BUFFER'
+                    : 'ROOM OFFLINE',
+                color: retry || !roomConfigured ? _yellow : _mint,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            retry
+                ? 'The final packet is retained unchanged until its acknowledgement arrives.'
+                : roomConfigured
+                ? 'Recognised words stay on this device. Tap Translate now, or it sends after ${controller.utteranceIdleTimeoutLabel} without another sign.'
+                : 'Recognised words stay on this device. Configure a room before it can send the completed utterance.',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            key: const ValueKey<String>('translated-utterance-buffer'),
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              color: _background,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: words.isEmpty
+                ? const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Sign one or more words to build an utterance.',
+                      style: TextStyle(color: _subtle, fontSize: 11),
+                    ),
+                  )
+                : Wrap(
+                    spacing: 7,
+                    runSpacing: 6,
+                    children: words
+                        .map(
+                          (word) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _cyan.withValues(alpha: .10),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: _cyan.withValues(alpha: .28),
+                              ),
+                            ),
+                            child: Text(
+                              word,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              SizedBox(
+                height: 42,
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('commit-translated-utterance'),
+                  onPressed: controller.canCommitTranslatedUtterance && !sending
+                      ? controller.commitTranslatedUtterance
+                      : null,
+                  icon: Icon(retry ? Icons.replay : Icons.send_outlined),
+                  label: Text(actionLabel),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _mint,
+                    foregroundColor: _background,
+                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 42,
+                child: TextButton.icon(
+                  key: const ValueKey<String>('clear-translated-utterance'),
+                  onPressed: controller.canClearTranslatedUtterance
+                      ? controller.clearCaption
+                      : null,
+                  icon: const Icon(Icons.cleaning_services_outlined, size: 17),
+                  label: const Text('Reset words'),
+                ),
+              ),
+              if (words.isNotEmpty)
+                SizedBox(
+                  height: 42,
+                  child: TextButton.icon(
+                    key: const ValueKey<String>('preview-sign-utterance-json'),
+                    onPressed: () => _showJsonPreview(context),
+                    icon: const Icon(Icons.data_object_outlined, size: 17),
+                    label: const Text('Preview JSON'),
+                  ),
+                ),
+            ],
+          ),
+          if (!roomConfigured && !retry) ...<Widget>[
+            const SizedBox(height: 9),
+            const Text(
+              'A room endpoint and participant capability are required before Translate can send anything.',
+              style: TextStyle(color: _yellow, fontSize: 10, height: 1.35),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showJsonPreview(BuildContext context) {
+    final payload = controller.translatedUtterancePreviewJson;
+    if (payload == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Final utterance JSON'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'This is the payload for Translate. Camera frames, landmarks, room code, and participant credentials are not included.',
+                style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 280,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: SelectionArea(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        payload,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          height: 1.35,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 9),
+              const Text(
+                'If the 1.5-second idle timer sends it, only completion_reason changes to "pause_timeout".',
+                style: TextStyle(color: _yellow, fontSize: 10, height: 1.35),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SpeechCaptionCard extends StatelessWidget {
@@ -1996,8 +2228,8 @@ class _ActionDock extends StatelessWidget {
         ),
         _DockAction(
           icon: Icons.cleaning_services_outlined,
-          label: 'Clear',
-          value: 'Caption',
+          label: 'Reset',
+          value: 'Words',
           onTap: controller.clearCaption,
         ),
         _DockAction(
@@ -2298,13 +2530,27 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
   AppController get controller => widget.controller;
   bool get ready =>
       controller.devices.cameraReady &&
-      controller.alignment.isAligned &&
       controller.latestFrame?.shouldersVisible == true &&
       controller.latestFrame?.handsVisible == true &&
       (controller.latestFrame?.trackingConfidence ?? 0) >= .70;
 
+  /// Keep the action available. Missing setup is explained immediately in
+  /// [_record] instead of looking like a broken, blurred button.
+  bool get canStartRecording => !_recording;
+
+  @override
+  void initState() {
+    super.initState();
+    _labelController.addListener(_onLabelChanged);
+  }
+
+  void _onLabelChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _labelController.removeListener(_onLabelChanged);
     _labelController.dispose();
     super.dispose();
   }
@@ -2392,14 +2638,13 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                     style: TextStyle(color: _muted, fontSize: 13, height: 1.5),
                   ),
                   const SizedBox(height: 22),
-                  if (_samples.isEmpty)
-                    TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Word or phrase',
-                        hintText: 'e.g. Mum, kopi, my name',
-                      ),
+                  TextField(
+                    controller: _labelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Word or phrase',
+                      hintText: 'e.g. Mum, kopi, my name',
                     ),
+                  ),
                   const SizedBox(height: 18),
                   TrackingPreview(
                     controller: controller,
@@ -2409,6 +2654,13 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                   ),
                   const SizedBox(height: 15),
                   _PositionChecklist(controller: controller, ready: ready),
+                  if (controller.devices.cameraReady && !ready) ...<Widget>[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'You can start recording now. Keep both shoulders and at least one hand in view; invalid captures are not saved.',
+                      style: TextStyle(color: _subtle, fontSize: 11),
+                    ),
+                  ],
                   if (!controller.devices.cameraReady) ...<Widget>[
                     const SizedBox(height: 12),
                     Align(
@@ -2483,13 +2735,7 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                     icon: _samples.length == 5
                         ? Icons.save_outlined
                         : Icons.fiber_manual_record,
-                    onPressed:
-                        ready &&
-                            !_recording &&
-                            (_samples.isNotEmpty ||
-                                _labelController.text.trim().isNotEmpty)
-                        ? _record
-                        : null,
+                    onPressed: canStartRecording ? _record : null,
                   ),
                   if (_samples.isNotEmpty && _samples.length < 5)
                     const Padding(
@@ -2511,8 +2757,16 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
 
   Future<void> _record() async {
     if (_samples.length == 5) {
+      if (_labelController.text.trim().isEmpty) {
+        setState(() => _error = 'Name this personal sign before saving it.');
+        return;
+      }
       await controller.saveCustomSign(_labelController.text.trim(), _samples);
       setState(() => _saved = true);
+      return;
+    }
+    if (!controller.devices.cameraReady) {
+      setState(() => _error = 'Enable the camera before recording a sign.');
       return;
     }
     setState(() {
@@ -2553,9 +2807,7 @@ class _PositionChecklist extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          ready
-              ? 'READY TO RECORD'
-              : controller.alignment.message.toUpperCase(),
+          ready ? 'READY TO RECORD' : _recordingReadinessMessage(controller),
           style: TextStyle(
             color: ready ? _mint : _yellow,
             fontSize: 11,
@@ -2587,15 +2839,20 @@ class _PositionChecklist extends StatelessWidget {
                   controller.latestFrame?.lightingScore == null ||
                   controller.latestFrame!.lightingScore > .6,
             ),
-            _CheckChip(
-              label: 'Position: Good',
-              checked: controller.alignment.isAligned,
-            ),
           ],
         ),
       ],
     ),
   );
+
+  static String _recordingReadinessMessage(AppController controller) {
+    if (!controller.devices.cameraReady) return 'ENABLE CAMERA';
+    final frame = controller.latestFrame;
+    if (frame?.shouldersVisible != true) return 'KEEP SHOULDERS IN VIEW';
+    if (frame?.handsVisible != true) return 'SHOW AT LEAST ONE HAND';
+    if ((frame?.trackingConfidence ?? 0) < .70) return 'IMPROVING TRACKING';
+    return 'PREPARING LANDMARKS';
+  }
 }
 
 class SettingsScreen extends StatelessWidget {

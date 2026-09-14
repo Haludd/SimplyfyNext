@@ -88,6 +88,31 @@ void main() {
       expect(stage12.latestFrame?.normalisation, isNull);
       await stage34.stop();
     });
+
+    test(
+      'reconnects the browser tracker once after an idle stream stalls',
+      () async {
+        final bridge = _FakeWebHandTrackerBridge();
+        final service = WebTrackingService(bridge: bridge);
+        addTearDown(service.dispose);
+
+        await service.start();
+        bridge.reportHealth('stalled');
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(bridge.startCalls, 2);
+        expect(bridge.stopCalls, 1);
+        expect(service.status, 'MediaPipe tracking resumed');
+
+        bridge.reportHealth('stream_ended');
+        await Future<void>.delayed(Duration.zero);
+
+        expect(bridge.startCalls, 2);
+        expect(bridge.stopCalls, 1);
+        expect(service.status, 'Camera needs a manual restart');
+      },
+    );
   });
 
   group('Stage 1/2 -> Stage 3/4 stream', () {
@@ -268,20 +293,33 @@ bool _hasVelocity(LandmarkFrame frame) => frame.normalisation!.hands
 final class _FakeWebHandTrackerBridge extends WebHandTrackerBridge {
   final StreamController<HandTrackingFrame> _frames =
       StreamController<HandTrackingFrame>.broadcast(sync: true);
+  final StreamController<String> _health = StreamController<String>.broadcast(
+    sync: true,
+  );
+  int startCalls = 0;
+  int stopCalls = 0;
 
   @override
   Stream<HandTrackingFrame> get frames => _frames.stream;
 
+  @override
+  Stream<String> get healthEvents => _health.stream;
+
   void emit(HandTrackingFrame frame) => _frames.add(frame);
 
-  @override
-  Future<void> start() async {}
+  void reportHealth(String event) => _health.add(event);
 
   @override
-  Future<void> stop() async {}
+  Future<void> start() async => startCalls += 1;
 
   @override
-  void dispose() => unawaited(_frames.close());
+  Future<void> stop() async => stopCalls += 1;
+
+  @override
+  void dispose() {
+    unawaited(_frames.close());
+    unawaited(_health.close());
+  }
 }
 
 final class _FakeTrackingService implements TrackingService {

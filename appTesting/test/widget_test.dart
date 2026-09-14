@@ -58,7 +58,8 @@ void main() {
       ],
       modelVersion: 'signchat_asl_signs_onnx',
     );
-    controller.backendStatus = 'Glosses sent to backend · accepted';
+    controller.backendStatus =
+        'Utterance accepted · waiting for the room result';
 
     await tester.pumpWidget(SignBridgeApp(controller: controller));
     await tester.pumpAndSettle();
@@ -73,7 +74,14 @@ void main() {
     );
     expect(find.text('HELLO'), findsOneWidget);
     expect(find.text('hello 81%  ·  please 12%'), findsOneWidget);
-    expect(find.text('Glosses sent to backend · accepted'), findsOneWidget);
+    expect(
+      find.text('Utterance accepted · waiting for the room result'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('translated-utterance-buffer')),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

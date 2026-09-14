@@ -91,6 +91,11 @@ const TRACKING_FPS = Number.isFinite(queryTrackingFps) && queryTrackingFps > 0
 const DETECTION_INTERVAL_MS = 1000 / TRACKING_FPS;
 const FLUTTER_EVENT_FPS = Math.min(18, TRACKING_FPS);
 const FLUTTER_EVENT_INTERVAL_MS = 1000 / FLUTTER_EVENT_FPS;
+// Browsers can suspend a webcam or its MediaPipe callbacks while a tab is in
+// the background. Detect that state after the tab is visible again so Flutter
+// can restart the one camera session cleanly instead of appearing frozen.
+const CAMERA_STALL_TIMEOUT_MS = 8000;
+const CAMERA_WATCHDOG_INTERVAL_MS = 2000;
 const POINT_QUALITY_CANVAS_WIDTH = 192;
 const POINT_QUALITY_INTERVAL_MS = 100;
 const SUBJECT_MATCH_DISTANCE = 0.32;
@@ -144,6 +149,11 @@ let trackingFrameErrorShown = false;
 let trackingLoopFrameCount = 0;
 let trackingLoopStartedAt = 0;
 let trackingLoopLastLogAt = 0;
+let cameraWatchdog;
+let lastHolisticResultAt = 0;
+let cameraProblemReported = false;
+let firstHolisticResultReported = false;
+let streamTrackEndHandlers = [];
 let subjectTrack;
 let subjectAcquire;
 let subjectReferenceIdentity;
@@ -192,6 +202,74 @@ function syncVisibleCameraElement() {
   void video.play().catch((error) => {
     console.warn('Unable to resume the visible camera preview.', error);
   });
+}
+
+function dispatchTrackerStatus(state, detail = '') {
+  window.dispatchEvent(
+    new CustomEvent('signbridge-hand-tracker-status', {
+      detail: JSON.stringify({state, detail}),
+    }),
+  );
+}
+
+function isDocumentVisible() {
+  return document.visibilityState !== 'hidden';
+}
+
+function streamHasLiveVideoTrack() {
+  const videoTracks = stream?.getVideoTracks?.() ?? [];
+  return (
+    videoTracks.length > 0 &&
+    videoTracks.some((track) => track.readyState === 'live')
+  );
+}
+
+function reportCameraProblem(state, detail) {
+  if (!started || cameraProblemReported) return;
+  cameraProblemReported = true;
+  dispatchTrackerStatus(state, detail);
+}
+
+function clearCameraWatchdog() {
+  if (cameraWatchdog) clearInterval(cameraWatchdog);
+  cameraWatchdog = undefined;
+}
+
+function startCameraWatchdog() {
+  clearCameraWatchdog();
+  cameraWatchdog = setInterval(() => {
+    // A background tab deliberately receives fewer browser resources. Wait
+    // until it is visible before classifying the paused camera as unhealthy.
+    if (!started || !isDocumentVisible()) return;
+    if (!streamHasLiveVideoTrack()) {
+      reportCameraProblem('stream_ended', 'The camera video track ended.');
+      return;
+    }
+    if (performance.now() - lastHolisticResultAt >= CAMERA_STALL_TIMEOUT_MS) {
+      reportCameraProblem(
+        'stalled',
+        'MediaPipe stopped returning camera frames.',
+      );
+    }
+  }, CAMERA_WATCHDOG_INTERVAL_MS);
+}
+
+function detachStreamHealthHandlers() {
+  for (const {track, handler} of streamTrackEndHandlers) {
+    track.removeEventListener('ended', handler);
+  }
+  streamTrackEndHandlers = [];
+}
+
+function attachStreamHealthHandlers(cameraStream) {
+  detachStreamHealthHandlers();
+  for (const track of cameraStream.getVideoTracks()) {
+    const handler = () => {
+      reportCameraProblem('stream_ended', 'The camera video track ended.');
+    };
+    track.addEventListener('ended', handler);
+    streamTrackEndHandlers.push({track, handler});
+  }
 }
 
 function clamp01(value) {
@@ -1092,6 +1170,12 @@ function holisticResultAsTaskResults(results) {
 function onHolisticResults(results) {
   if (!started) return;
   const now = performance.now();
+  lastHolisticResultAt = now;
+  cameraProblemReported = false;
+  if (!firstHolisticResultReported) {
+    firstHolisticResultReported = true;
+    dispatchTrackerStatus('ready');
+  }
   const pose = Array.isArray(results?.poseLandmarks)
     ? results.poseLandmarks
     : [];
@@ -1222,6 +1306,7 @@ async function start() {
         frameRate: { ideal: 30, max: 30 },
       },
     });
+    attachStreamHealthHandlers(stream);
     video.srcObject = stream;
     video.muted = true;
     video.playsInline = true;
@@ -1243,6 +1328,9 @@ async function start() {
   trackingLoopFrameCount = 0;
   trackingLoopStartedAt = performance.now();
   trackingLoopLastLogAt = trackingLoopStartedAt;
+  lastHolisticResultAt = trackingLoopStartedAt;
+  cameraProblemReported = false;
+  firstHolisticResultReported = false;
   subjectTrack = null;
   subjectAcquire = null;
   subjectReferenceIdentity = null;
@@ -1251,12 +1339,16 @@ async function start() {
     // Model loading errors are surfaced by the recognizer after the clip is
     // completed; ordinary landmark tracking can continue meanwhile.
   });
+  startCameraWatchdog();
   processFrame();
 }
 
 async function stop() {
   started = false;
   if (animationFrame) cancelAnimationFrame(animationFrame);
+  animationFrame = undefined;
+  clearCameraWatchdog();
+  detachStreamHealthHandlers();
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   if (video) video.srcObject = null;
@@ -1273,6 +1365,9 @@ async function stop() {
   trackingLoopFrameCount = 0;
   trackingLoopStartedAt = 0;
   trackingLoopLastLogAt = 0;
+  lastHolisticResultAt = 0;
+  cameraProblemReported = false;
+  firstHolisticResultReported = false;
   subjectTrack = null;
   subjectAcquire = null;
   subjectReferenceIdentity = null;
@@ -1282,6 +1377,15 @@ async function stop() {
 
 globalThis.addEventListener('pagehide', () => {
   void stop();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!started || !isDocumentVisible()) return;
+  // Do not restart while hidden. Once visible, the watchdog either sees the
+  // next MediaPipe frame or asks Flutter for a single controlled reconnect.
+  if (!streamHasLiveVideoTrack()) {
+    reportCameraProblem('stream_ended', 'The camera did not resume after idle.');
+  }
 });
 
 window.signBridgeHandTracker = {

@@ -21,6 +21,12 @@ const MIN_CONFIDENCE = 0.4;
 const MAX_CLASSIFIER_RUNS = 20;
 const MAX_CLASSIFIER_AGE_MS = 5 * 60 * 1000;
 
+// Keep the model's original 250-class index map intact, but never present
+// disabled vocabulary items to the signer or sentence backend. A disabled
+// top result becomes unknown instead of being silently replaced with the
+// model's next guess.
+const DISABLED_LABELS = new Set(['donkey']);
+
 let captureActive = false;
 let captureFrames = [];
 let lastCapturedAtMs = Number.NEGATIVE_INFINITY;
@@ -222,13 +228,14 @@ function softmax(logits) {
   return probabilities;
 }
 
-function topK(probabilities, labels, count = 3) {
+function topK(probabilities, labels, count = 3, excludedLabels = new Set()) {
   return Array.from(probabilities)
     .map((confidence, index) => ({
       word: labels[index] ?? 'unknown',
       confidence,
       index,
     }))
+    .filter((candidate) => !excludedLabels.has(candidate.word.toLowerCase()))
     .sort((left, right) => right.confidence - left.confidence)
     .slice(0, count)
     .map((candidate, index) => ({
@@ -262,9 +269,17 @@ async function runClassification(frames) {
     // softmax copies the values, so the runtime-owned output can be released
     // as soon as this prediction has been decoded.
     const probabilities = softmax(logitsTensor.data);
-    const alternatives = topK(probabilities, classifier.labels);
+    const rawBest = topK(probabilities, classifier.labels, 1)[0];
+    const topLabelDisabled = rawBest != null &&
+      DISABLED_LABELS.has(rawBest.word.toLowerCase());
+    const alternatives = topK(
+      probabilities,
+      classifier.labels,
+      3,
+      DISABLED_LABELS,
+    );
     const best = alternatives[0];
-    const status = best && best.confidence >= MIN_CONFIDENCE
+    const status = !topLabelDisabled && best && best.confidence >= MIN_CONFIDENCE
       ? 'recognized'
       : 'unknown';
     return {
@@ -275,7 +290,11 @@ async function runClassification(frames) {
       model_version: MODEL_VERSION,
       frame_count: frames.length,
       inference_ms: Math.round(performance.now() - started),
-      reason: status === 'recognized' ? undefined : 'low_confidence',
+      reason: status === 'recognized'
+        ? undefined
+        : topLabelDisabled
+          ? 'disabled_label'
+          : 'low_confidence',
       detail: `${frames.length} MediaPipe landmark frames · local ${classifier.executionProvider} ONNX inference`,
     };
   } finally {

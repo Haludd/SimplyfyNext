@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:apptesting/app_controller.dart';
 import 'package:apptesting/contracts/landmark_stream.dart';
@@ -11,8 +12,11 @@ import 'package:apptesting/services/hand_pose_normalizer.dart';
 import 'package:apptesting/services/landmark_batch_adapter.dart';
 import 'package:apptesting/services/local_state_service.dart';
 import 'package:apptesting/services/tracking_service.dart';
+import 'package:apptesting/services/translated_sign_utterance_submission_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fixtures/landmark_frame_fixtures.dart';
@@ -119,6 +123,7 @@ void main() {
     await controller.analyzeSign();
     expect(controller.visibleAnalysis?.caption, 'hello');
     expect(controller.visibleAnalysis?.modelVersion, _hello.modelVersion);
+    expect(controller.translatedWords, <String>['HELLO']);
     expect(bridge.finishCalls, 1);
     controller.startUtterance();
     expect(controller.visibleAnalysis?.caption, 'hello');
@@ -184,6 +189,122 @@ void main() {
       await first;
       expect(tracking.isCapturingSign, isTrue);
       expect(controller.visibleAnalysis?.caption, 'hello');
+    },
+  );
+
+  test(
+    'posts the buffered words only after an explicit final commit',
+    () async {
+      Map<String, dynamic>? sent;
+      final submission = TranslatedSignUtteranceSubmissionService(
+        endpoint: Uri.parse('http://localhost/v1/rooms/ROOM/sign-utterances'),
+        participantCapability: 'test-capability',
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'type': 'utterance_ack',
+              'message_id': '123e4567-e89b-42d3-a456-426614174000',
+              'client_sequence': 0,
+              'server_sequence': 1,
+              'disposition': 'accepted',
+            }),
+            202,
+          );
+        }),
+      );
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final tracking = DemoTrackingService();
+      final controller = AppController(
+        LocalStateService(preferences),
+        tracking,
+        DeviceAccessService(),
+        aslRecognizer: _Recognizer(),
+        utteranceSubmission: submission,
+        messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
+      )..audioEnabled = false;
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(Duration.zero);
+
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await controller.analyzeSign();
+
+      expect(sent, isNull);
+      expect(controller.translatedWords, <String>['HELLO']);
+      final preview = jsonDecode(
+        controller.translatedUtterancePreviewJson!,
+      ) as Map<String, dynamic>;
+      expect(preview['completion_reason'], 'user_commit');
+      expect(preview['words'], hasLength(1));
+      expect(preview, isNot(contains('landmarks')));
+
+      await controller.commitTranslatedUtterance();
+
+      expect(sent?['type'], 'translated_sign_utterance');
+      expect(sent?['words'], <dynamic>[
+        <String, dynamic>{
+          'index': 0,
+          'token_id': 'word-0',
+          'word': 'HELLO',
+          'confidence': .91,
+          'alternatives': <dynamic>[],
+        },
+      ]);
+      expect(controller.translatedWords, isEmpty);
+      expect(controller.backendStatus, contains('Utterance accepted'));
+    },
+  );
+
+  test(
+    'sends one pause_timeout utterance after the configured idle period',
+    () async {
+      Map<String, dynamic>? sent;
+      final submission = TranslatedSignUtteranceSubmissionService(
+        endpoint: Uri.parse('http://localhost/v1/rooms/ROOM/sign-utterances'),
+        participantCapability: 'test-capability',
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'type': 'utterance_ack',
+              'message_id': '123e4567-e89b-42d3-a456-426614174000',
+              'client_sequence': 0,
+              'server_sequence': 1,
+              'disposition': 'accepted',
+            }),
+            202,
+          );
+        }),
+      );
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final tracking = DemoTrackingService();
+      final controller = AppController(
+        LocalStateService(preferences),
+        tracking,
+        DeviceAccessService(),
+        aslRecognizer: _Recognizer(),
+        utteranceSubmission: submission,
+        messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
+        utteranceIdleTimeout: const Duration(milliseconds: 10),
+      )..audioEnabled = false;
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(Duration.zero);
+
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await controller.analyzeSign();
+      expect(sent, isNull);
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(sent?['completion_reason'], 'pause_timeout');
+      expect(sent?['words'], hasLength(1));
+      expect(controller.translatedWords, isEmpty);
     },
   );
 }

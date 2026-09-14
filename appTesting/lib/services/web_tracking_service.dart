@@ -19,7 +19,10 @@ class WebTrackingService implements TrackingService {
   final List<LandmarkFrame> _utteranceFrames = <LandmarkFrame>[];
   LandmarkFrame? _latestFrame;
   StreamSubscription<HandTrackingFrame>? _subscription;
+  StreamSubscription<String>? _healthSubscription;
   bool _started = false;
+  bool _automaticRecoveryUsed = false;
+  bool _recovering = false;
   bool _capturingUtterance = false;
   String _status = 'Waiting for camera';
 
@@ -56,14 +59,18 @@ class WebTrackingService implements TrackingService {
     _utteranceFrames.clear();
     _capturingUtterance = false;
     _subscription = _bridge.frames.listen(ingestRaw);
+    _healthSubscription = _bridge.healthEvents.listen(_onTrackerHealthEvent);
     try {
       await _bridge.start();
       _started = true;
+      _automaticRecoveryUsed = false;
       _status = 'MediaPipe four-world tracking';
     } catch (_) {
       _status = 'Camera permission needed';
       await _subscription?.cancel();
       _subscription = null;
+      await _healthSubscription?.cancel();
+      _healthSubscription = null;
       rethrow;
     }
   }
@@ -74,12 +81,48 @@ class WebTrackingService implements TrackingService {
     await _bridge.stop();
     await _subscription?.cancel();
     _subscription = null;
+    await _healthSubscription?.cancel();
+    _healthSubscription = null;
     _started = false;
+    _automaticRecoveryUsed = false;
+    _recovering = false;
     _capturingUtterance = false;
     _status = 'Camera stopped';
   }
 
   void ingestRaw(HandTrackingFrame raw) => ingest(_normalizer.normalize(raw));
+
+  void _onTrackerHealthEvent(String event) {
+    if (event != 'stalled' && event != 'stream_ended') return;
+    unawaited(_recoverTrackerOnce(event));
+  }
+
+  Future<void> _recoverTrackerOnce(String event) async {
+    if (!_started || _recovering) return;
+    if (_automaticRecoveryUsed) {
+      _status = 'Camera needs a manual restart';
+      return;
+    }
+
+    _automaticRecoveryUsed = true;
+    _recovering = true;
+    _status = event == 'stream_ended'
+        ? 'Camera stream ended · reconnecting'
+        : 'Tracking paused · reconnecting';
+    try {
+      // Keep the Flutter frame subscription alive while only the browser
+      // media/MediaPipe session is recreated. This preserves the user's UI
+      // and avoids duplicate stream listeners after an idle tab resumes.
+      await _bridge.stop();
+      if (!_started) return;
+      await _bridge.start();
+      _status = 'MediaPipe tracking resumed';
+    } catch (_) {
+      _status = 'Camera needs a manual restart';
+    } finally {
+      _recovering = false;
+    }
+  }
 
   @override
   void beginUtterance() {

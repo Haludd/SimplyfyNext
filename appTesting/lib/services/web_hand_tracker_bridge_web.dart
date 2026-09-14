@@ -10,9 +10,16 @@ import '../models/hand_tracking_models.dart';
 class WebHandTrackerBridge {
   final StreamController<HandTrackingFrame> _controller =
       StreamController<HandTrackingFrame>.broadcast();
+  final StreamController<String> _healthController =
+      StreamController<String>.broadcast();
   web.EventListener? _eventListener;
+  web.EventListener? _healthEventListener;
 
   Stream<HandTrackingFrame> get frames => _controller.stream;
+
+  /// Browser-only health events for a camera stream that ended or stopped
+  /// producing MediaPipe results. No image or landmark data is included.
+  Stream<String> get healthEvents => _healthController.stream;
 
   Future<void> start() async {
     _eventListener ??= ((web.Event event) {
@@ -30,6 +37,26 @@ class WebHandTrackerBridge {
       }
     }).toJS;
     web.window.addEventListener('signbridge-hand-frame', _eventListener);
+
+    _healthEventListener ??= ((web.Event event) {
+      final detail = (event as web.CustomEvent).detail?.dartify();
+      if (detail is! String) return;
+      try {
+        final json = jsonDecode(detail) as Map<String, dynamic>;
+        final state = json['state'];
+        if (state is String && !_healthController.isClosed) {
+          _healthController.add(state);
+        }
+      } on FormatException {
+        // A malformed health event must not affect live hand tracking.
+      } on TypeError {
+        // A malformed health event must not affect live hand tracking.
+      }
+    }).toJS;
+    web.window.addEventListener(
+      'signbridge-hand-tracker-status',
+      _healthEventListener,
+    );
 
     final tracker = globalContext['signBridgeHandTracker'];
     if (tracker == null) {
@@ -55,6 +82,13 @@ class WebHandTrackerBridge {
     if (_eventListener != null) {
       web.window.removeEventListener('signbridge-hand-frame', _eventListener);
     }
+    if (_healthEventListener != null) {
+      web.window.removeEventListener(
+        'signbridge-hand-tracker-status',
+        _healthEventListener,
+      );
+    }
     _controller.close();
+    _healthController.close();
   }
 }

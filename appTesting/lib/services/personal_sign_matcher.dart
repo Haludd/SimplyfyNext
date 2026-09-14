@@ -11,9 +11,9 @@ import '../models/tracking_models.dart';
 final class PersonalSignMatcher {
   const PersonalSignMatcher({
     this.resampledFrameCount = 12,
-    this.maximumDistance = .25,
-    this.minimumConfidence = .75,
-    this.minimumMargin = .08,
+    this.maximumDistance = .50,
+    this.minimumConfidence = .55,
+    this.minimumMargin = .05,
   }) : assert(resampledFrameCount > 1),
        assert(maximumDistance > 0 && maximumDistance <= 1),
        assert(minimumConfidence > 0 && minimumConfidence <= 1),
@@ -23,7 +23,10 @@ final class PersonalSignMatcher {
   /// frames, so a sign performed at a different speed remains comparable.
   final int resampledFrameCount;
 
-  /// RMS feature distance that maps to zero template confidence.
+  /// RMS feature distance that maps to zero template confidence. Wrist- and
+  /// shoulder-relative coordinates are stable, but a repeated human sign is
+  /// not pixel-identical to its saved example, so this intentionally leaves
+  /// room for natural speed and placement variation.
   final double maximumDistance;
   final double minimumConfidence;
   final double minimumMargin;

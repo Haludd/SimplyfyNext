@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -7,13 +8,14 @@ import 'package:flutter/widgets.dart';
 import 'config/landmark_stream_client_config.dart';
 import 'models/asl_recognition_models.dart';
 import 'contracts/landmark_stream.dart';
+import 'contracts/translated_sign_utterance.dart';
 import 'models/face_tracking_models.dart';
 import 'models/tracking_models.dart';
 import 'models/hand_tracking_models.dart';
 import 'models/speech_recognition_models.dart';
 import 'services/device_access_service.dart';
 import 'services/asl_recognizer_bridge.dart';
-import 'services/asl_word_submission_service.dart';
+import 'services/asl_label_to_english.dart';
 import 'services/local_state_service.dart';
 import 'services/local_sign_sequence.dart';
 import 'services/personal_sign_matcher.dart';
@@ -22,8 +24,8 @@ import 'services/speech_to_text_service.dart';
 import 'services/text_to_speech_service.dart';
 import 'services/tracking_service.dart';
 import 'services/sign_boundary_detector.dart';
-import 'services/gloss_lattice_websocket_client.dart';
 import 'services/server_landmark_stream_integration.dart';
+import 'services/translated_sign_utterance_submission_service.dart';
 
 enum SignBridgePage { onboarding, live, dictionary, settings }
 
@@ -37,13 +39,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     SpeechToTextService? speechToText,
     TextToSpeechService? textToSpeech,
     AslRecognizerBridge? aslRecognizer,
-    AslWordSubmissionService? wordSubmission,
+    TranslatedSignUtteranceSubmissionService? utteranceSubmission,
+    String Function()? messageIdGenerator,
+    this.utteranceIdleTimeout = const Duration(milliseconds: 1500),
   }) : speechToText = speechToText ?? SpeechToTextService(),
        textToSpeech = textToSpeech ?? TextToSpeechService(),
        _aslRecognizer = aslRecognizer ?? AslRecognizerBridge(),
-       _wordSubmission =
-           wordSubmission ?? AslWordSubmissionService.fromEnvironment() {
-    backendStatus = 'Local capture only · no backend request';
+       _utteranceSubmission =
+           utteranceSubmission ??
+           TranslatedSignUtteranceSubmissionService.fromEnvironment(),
+       _messageIdGenerator = messageIdGenerator ?? _newUuidV4 {
+    if (utteranceIdleTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        utteranceIdleTimeout,
+        'utteranceIdleTimeout',
+        'must be positive',
+      );
+    }
+    backendStatus =
+        'Local recognition · words stay on this device until Translate';
     _trackingSubscription = tracking.frames.listen(_onTrackingFrame);
     this.speechToText.addListener(_onSpeechToTextChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -56,16 +70,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   final SpeechToTextService speechToText;
   final TextToSpeechService textToSpeech;
   final AslRecognizerBridge _aslRecognizer;
-  final AslWordSubmissionService _wordSubmission;
+  final TranslatedSignUtteranceSubmissionService _utteranceSubmission;
+  final String Function() _messageIdGenerator;
+  final Duration utteranceIdleTimeout;
   final SignAnalysisService signAnalyzer = SignAnalysisService();
   final SimulatedSignSequenceApiClient simulator =
       SimulatedSignSequenceApiClient();
   final SignBoundaryDetector _signBoundaryDetector = SignBoundaryDetector();
   final PersonalSignMatcher _personalSignMatcher = const PersonalSignMatcher();
+  final AslLabelToEnglish _englishTranslator = const AslLabelToEnglish();
   final String sessionId = 'session-${DateTime.now().millisecondsSinceEpoch}';
 
   late final StreamSubscription<LandmarkFrame> _trackingSubscription;
   Timer? _frameNotifyTimer;
+  Timer? _utteranceIdleTimer;
   SignBridgePage page = SignBridgePage.onboarding;
   ViewMode viewMode = ViewMode.wireframe;
   int calibrationStep = 1;
@@ -76,8 +94,55 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<CustomSign> customSigns = <CustomSign>[];
   SignAnalysisResult? latestAnalysis;
 
-  /// Ordered WLASL glosses collected from completed isolated-word captures.
-  List<String> glosses = <String>[];
+  /// Contract-safe English words held locally until the signer finishes the
+  /// complete utterance. They are never sent one sign at a time.
+  final List<_BufferedTranslatedWord> _utteranceWords =
+      <_BufferedTranslatedWord>[];
+  TranslatedSignUtterance? _pendingUtterance;
+  String? _draftMessageId;
+  int _nextClientSequence = 0;
+  bool _utteranceSubmissionInFlight = false;
+
+  List<String> get translatedWords =>
+      List<String>.unmodifiable(_utteranceWords.map((word) => word.word));
+
+  @Deprecated('Use translatedWords; v1 sends English words, not glosses.')
+  List<String> get glosses => translatedWords;
+
+  int get translatedWordCount => _utteranceWords.length;
+  bool get hasTranslatedWords => _utteranceWords.isNotEmpty;
+  bool get isUtteranceSubmissionConfigured => _utteranceSubmission.isConfigured;
+  bool get isUtteranceSubmissionInFlight => _utteranceSubmissionInFlight;
+  bool get hasPendingUtteranceRetry => _pendingUtterance != null;
+  bool get canCommitTranslatedUtterance =>
+      !_utteranceSubmissionInFlight &&
+      (_pendingUtterance != null || _utteranceWords.isNotEmpty);
+  bool get canClearTranslatedUtterance =>
+      _pendingUtterance == null && _utteranceWords.isNotEmpty;
+  String get utteranceIdleTimeoutLabel {
+    final seconds = utteranceIdleTimeout.inMilliseconds / 1000;
+    final value = seconds == seconds.roundToDouble()
+        ? seconds.toStringAsFixed(0)
+        : seconds.toStringAsFixed(1);
+    return '$value second${seconds == 1 ? '' : 's'}';
+  }
+
+  /// JSON that would be sent if the signer presses Translate now. It is safe
+  /// to show in the UI: participant credentials are an HTTP header and never
+  /// appear in this contract object.
+  String? get translatedUtterancePreviewJson {
+    if (_utteranceWords.isEmpty && _pendingUtterance == null) return null;
+    try {
+      final utterance =
+          _pendingUtterance ??
+          _buildFinalUtterance(
+            TranslatedSignUtteranceCompletionReason.userCommit,
+          );
+      return const JsonEncoder.withIndent('  ').convert(utterance.toJson());
+    } on Object {
+      return null;
+    }
+  }
 
   /// The last completed result stays visible while the next sign is captured.
   SignAnalysisResult? get visibleAnalysis => latestAnalysis;
@@ -128,6 +193,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
+      _cancelUtteranceAutoCommit();
       unawaited(speechToText.stopListening());
       unawaited(textToSpeech.stop());
     }
@@ -153,7 +219,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (tracking.isCapturingSign && !_captureFinishInFlight) {
-        if (_signBoundaryDetector.update(frame)) {
+        final boundaryReached = _signBoundaryDetector.update(frame);
+        if (_signBoundaryDetector.hasObservedActivity) {
+          _cancelUtteranceAutoCommit();
+        }
+        if (boundaryReached) {
           unawaited(analyzeSign(automatic: true));
         }
       } else if (!tracking.isCapturingSign) {
@@ -382,11 +452,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Convenience handoff for the coordinator's terminal receipt.
-  void acceptBackendReceipt(GlossLatticeSubmissionReceipt receipt) {
-    acceptBackendEvent(receipt.terminalEvent);
-  }
-
   /// Starts one sign capture. Normal UI capture starts automatically when a
   /// usable hand signal appears.
   void startSign() {
@@ -431,11 +496,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void setLanguage(String language) {
     if (selectedLanguage != language) {
+      if (_pendingUtterance != null) {
+        backendStatus =
+            'Retry the final utterance before switching sign languages';
+        notifyListeners();
+        return;
+      }
       _recognitionGeneration += 1;
       unawaited(_aslRecognizer.reset());
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       _signBoundaryDetector.reset();
-      glosses = <String>[];
+      _cancelUtteranceAutoCommit();
+      _utteranceWords.clear();
+      _draftMessageId = null;
     }
     selectedLanguage = language;
     notifyListeners();
@@ -638,10 +711,43 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final word = result.word!;
-    glosses = <String>[...glosses, word.toUpperCase()];
-    backendStatus = _wordSubmission.isConfigured
-        ? 'Local ASL recognized "$word" · sending glosses to backend'
-        : 'Local ASL recognized "$word" · glosses kept locally';
+    if (_pendingUtterance != null) {
+      backendStatus =
+          'Final utterance is awaiting retry · no new word was added';
+      return;
+    }
+    try {
+      final translation = _englishTranslator.translate(result);
+      final producer = _producerFor(result);
+      if (_utteranceWords.length + translation.words.length >
+          TranslatedSignUtteranceContract.maxWords) {
+        backendStatus = 'This utterance already has 64 words · tap Translate before signing more';
+        return;
+      }
+      _draftMessageId ??= _messageIdGenerator();
+      for (var index = 0; index < translation.words.length; index += 1) {
+        _utteranceWords.add(
+          _BufferedTranslatedWord(
+            word: translation.words[index],
+            confidence: result.confidence,
+            producer: producer,
+            alternatives: index == 0
+                ? translation.alternatives
+                : const <EnglishLabelAlternative>[],
+          ),
+        );
+      }
+      backendStatus = _utteranceSubmission.isConfigured
+          ? 'Captured ${translation.words.join(' ')} · '
+                '${_utteranceWords.length} word${_utteranceWords.length == 1 ? '' : 's'} · auto-translates after $utteranceIdleTimeoutLabel idle'
+          : 'Captured ${translation.words.join(' ')} locally · '
+                'configure a room to translate the final utterance';
+      _scheduleUtteranceAutoCommit();
+    } on ArgumentError {
+      backendStatus =
+          'Recognized "$word" locally, but its English translation is unsupported';
+      return;
+    }
     if (audioEnabled) {
       final key =
           'local-asl:${frames.first.timestamp.microsecondsSinceEpoch}:${word.toLowerCase()}';
@@ -650,7 +756,40 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         unawaited(readCaptionAloud());
       }
     }
-    unawaited(_submitRecognizedWord(result, frames, glosses));
+  }
+
+  void _scheduleUtteranceAutoCommit() {
+    _cancelUtteranceAutoCommit();
+    if (!_utteranceSubmission.isConfigured ||
+        _utteranceWords.isEmpty ||
+        _pendingUtterance != null ||
+        isPaused ||
+        _teachingPersonalSign ||
+        _disposed) {
+      return;
+    }
+    _utteranceIdleTimer = Timer(utteranceIdleTimeout, () {
+      _utteranceIdleTimer = null;
+      if (_disposed ||
+          isPaused ||
+          _teachingPersonalSign ||
+          _pendingUtterance != null ||
+          _utteranceWords.isEmpty ||
+          _utteranceSubmissionInFlight) {
+        return;
+      }
+      unawaited(
+        commitTranslatedUtterance(
+          completionReason:
+              TranslatedSignUtteranceCompletionReason.pauseTimeout,
+        ),
+      );
+    });
+  }
+
+  void _cancelUtteranceAutoCommit() {
+    _utteranceIdleTimer?.cancel();
+    _utteranceIdleTimer = null;
   }
 
   /// Gives a confidently matched personal sign precedence over the general
@@ -741,79 +880,129 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _submitRecognizedWord(
-    AslRecognitionResult result,
-    List<LandmarkFrame> frames,
-    List<String> glosses,
-  ) async {
-    if (!_wordSubmission.isConfigured || !result.isRecognized) return;
-    final generation = _recognitionGeneration;
-    final submittedAnalysis = latestAnalysis;
-    bool isCurrent() =>
-        !_disposed &&
-        generation == _recognitionGeneration &&
-        identical(latestAnalysis, submittedAnalysis);
-    try {
-      final receipt = await _wordSubmission.submit(
-        eventId: 'asl-${DateTime.now().microsecondsSinceEpoch}',
-        sessionId: sessionId,
-        language: selectedLanguage,
-        result: result,
-        glosses: glosses,
-        startedAt: result.startedAtMs == null
-            ? frames.first.timestamp
-            : DateTime.fromMillisecondsSinceEpoch(
-                result.startedAtMs!,
-                isUtc: true,
-              ),
-        endedAt: result.endedAtMs == null
-            ? frames.last.timestamp
-            : DateTime.fromMillisecondsSinceEpoch(
-                result.endedAtMs!,
-                isUtc: true,
-              ),
-      );
-      if (!isCurrent()) return;
-      if (receipt?.caption case final caption?) {
-        _setLatestAnalysis(
-          _sentenceBackendAnalysis(
-            result: result,
-            glosses: glosses,
-            caption: caption,
-            ttsText: receipt?.ttsText,
-          ),
-        );
-      }
-      backendStatus = receipt == null
-          ? 'Local ASL gloss recognized'
-          : 'Glosses sent to backend · ${receipt.status}';
-    } on Object catch (error) {
-      if (!isCurrent()) return;
+  /// Submits exactly one completed utterance. If its acknowledgement is lost,
+  /// the retained immutable payload is sent again with the same UUID and
+  /// sequence number; a new utterance is never created for that retry.
+  Future<void> commitTranslatedUtterance({
+    TranslatedSignUtteranceCompletionReason completionReason =
+        TranslatedSignUtteranceCompletionReason.userCommit,
+  }) async {
+    if (_utteranceSubmissionInFlight) return;
+    if (!_utteranceSubmission.isConfigured) {
       backendStatus =
-          'Gloss recognized · backend submission failed · '
-          '${_shortError(error)}';
+          _utteranceSubmission.configurationMessage ??
+          'Room submission is not configured.';
+      notifyListeners();
+      return;
     }
+    if (_pendingUtterance == null && _utteranceWords.isEmpty) {
+      backendStatus = 'Sign at least one word before translating an utterance';
+      notifyListeners();
+      return;
+    }
+
+    TranslatedSignUtterance utterance;
+    try {
+      utterance = _pendingUtterance ?? _buildFinalUtterance(completionReason);
+    } on Object catch (error) {
+      backendStatus =
+          'Could not prepare final utterance · ${_shortError(error)}';
+      notifyListeners();
+      return;
+    }
+
+    _pendingUtterance = utterance;
+    _cancelUtteranceAutoCommit();
+    _utteranceSubmissionInFlight = true;
+    backendStatus =
+        'Submitting final ${utterance.words.length}-word utterance…';
     notifyListeners();
+    try {
+      final acknowledgement = await _utteranceSubmission.submit(utterance);
+      if (_disposed) return;
+      _nextClientSequence = max(
+        _nextClientSequence,
+        acknowledgement.clientSequence + 1,
+      );
+      _pendingUtterance = null;
+      _utteranceWords.clear();
+      _draftMessageId = null;
+      backendStatus = acknowledgement.wasCached
+          ? 'Utterance replay accepted · waiting for the room result'
+          : 'Utterance accepted · waiting for the room result';
+    } on TranslatedSignUtteranceSubmissionException catch (error) {
+      if (_disposed) return;
+      backendStatus = error.retryable
+          ? '${error.message} Tap Translate to retry the same utterance.'
+          : error.message;
+    } on Object catch (error) {
+      if (_disposed) return;
+      backendStatus =
+          'Could not submit the final utterance · ${_shortError(error)}';
+    } finally {
+      _utteranceSubmissionInFlight = false;
+      if (!_disposed) notifyListeners();
+    }
   }
 
-  SignAnalysisResult _sentenceBackendAnalysis({
-    required AslRecognitionResult result,
-    required List<String> glosses,
-    required String caption,
-    String? ttsText,
-  }) {
-    final local = _localAslAnalysis(result);
-    return SignAnalysisResult(
-      status: 'confident',
-      gestureLabel: result.word ?? 'recognized sign',
-      caption: caption,
-      ttsText: ttsText ?? caption,
-      confidence: result.confidence,
-      glossTrace: List<String>.unmodifiable(glosses),
-      hypotheses: local.hypotheses,
-      modelVersion: result.modelVersion,
-      latencyMs: local.latencyMs,
-      detail: 'Sentence caption returned by the gloss-processing backend',
+  TranslatedSignUtterance _buildFinalUtterance(
+    TranslatedSignUtteranceCompletionReason completionReason,
+  ) {
+    final producer = _utteranceWords.first.producer;
+    if (_utteranceWords.any((word) => word.producer != producer)) {
+      throw StateError(
+        'One utterance cannot mix recognizer profiles. Translate the current words before switching recognizers.',
+      );
+    }
+    return TranslatedSignUtterance(
+      messageId: _draftMessageId ??= _messageIdGenerator(),
+      clientSequence: _nextClientSequence,
+      completionReason: completionReason,
+      producer: producer,
+      words: <TranslatedSignWordToken>[
+        for (var index = 0; index < _utteranceWords.length; index += 1)
+          TranslatedSignWordToken(
+            index: index,
+            tokenId: 'word-$index',
+            word: _utteranceWords[index].word,
+            confidence: _utteranceWords[index].confidence,
+            alternatives: <TranslatedSignWordAlternative>[
+              for (
+                var alternativeIndex = 0;
+                alternativeIndex < _utteranceWords[index].alternatives.length;
+                alternativeIndex += 1
+              )
+                TranslatedSignWordAlternative(
+                  rank: alternativeIndex + 2,
+                  word: _utteranceWords[index]
+                      .alternatives[alternativeIndex]
+                      .word,
+                  confidence: _utteranceWords[index]
+                      .alternatives[alternativeIndex]
+                      .confidence,
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  TranslatedSignUtteranceProducer _producerFor(AslRecognitionResult result) {
+    final isPersonalTemplate = result.modelVersion.startsWith(
+      'personal_landmark_templates',
+    );
+    return TranslatedSignUtteranceProducer(
+      recognizerId: isPersonalTemplate
+          ? 'personal_landmark_templates'
+          : 'signchat_asl_signs_onnx',
+      recognizerVersion: result.modelVersion,
+      translatorId: 'asl_label_to_english',
+      translatorVersion: '1.0.0',
+      vocabularyVersion: isPersonalTemplate
+          ? 'personal_signs_local_v1'
+          : 'popsign_250_en_v1',
+      confidenceKind:
+          TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
     );
   }
 
@@ -850,10 +1039,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void togglePause() {
     isPaused = !isPaused;
     if (isPaused) {
+      _cancelUtteranceAutoCommit();
       _recognitionGeneration += 1;
       _signBoundaryDetector.reset();
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       unawaited(_aslRecognizer.reset());
+    } else {
+      _scheduleUtteranceAutoCommit();
     }
     notifyListeners();
   }
@@ -865,16 +1057,30 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (_teachingPersonalSign == value) return;
     _teachingPersonalSign = value;
     if (value) {
+      _cancelUtteranceAutoCommit();
       _recognitionGeneration += 1;
       _signBoundaryDetector.reset();
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       unawaited(_aslRecognizer.reset());
+    } else {
+      _scheduleUtteranceAutoCommit();
     }
     notifyListeners();
   }
 
   void clearCaption() {
+    if (_pendingUtterance != null) {
+      backendStatus =
+          'A final utterance is awaiting retry and cannot be changed';
+      notifyListeners();
+      return;
+    }
     isUnregisteredSign = false;
+    _cancelUtteranceAutoCommit();
+    _utteranceWords.clear();
+    _draftMessageId = null;
+    latestAnalysis = null;
+    backendStatus = 'Local word buffer cleared';
     notifyListeners();
   }
 
@@ -1021,9 +1227,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     _serverLandmarkStream = null;
     unawaited(integration?.close());
     _frameNotifyTimer?.cancel();
+    _cancelUtteranceAutoCommit();
     unawaited(_aslRecognizer.reset());
     _aslRecognizer.dispose();
-    _wordSubmission.close();
+    _utteranceSubmission.close();
     _trackingSubscription.cancel();
     WidgetsBinding.instance.removeObserver(this);
     speechToText.removeListener(_onSpeechToTextChanged);
@@ -1038,4 +1245,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final text = error.toString();
     return text.length <= 160 ? text : '${text.substring(0, 157)}...';
   }
+}
+
+final class _BufferedTranslatedWord {
+  _BufferedTranslatedWord({
+    required this.word,
+    required this.confidence,
+    required this.producer,
+    required List<EnglishLabelAlternative> alternatives,
+  }) : alternatives = List<EnglishLabelAlternative>.unmodifiable(alternatives);
+
+  final String word;
+  final double confidence;
+  final TranslatedSignUtteranceProducer producer;
+  final List<EnglishLabelAlternative> alternatives;
+}
+
+String _newUuidV4() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+      .join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20)}';
 }

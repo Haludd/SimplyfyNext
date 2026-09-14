@@ -41,6 +41,8 @@ test('the browser adapter captures MediaPipe landmark frames locally', async () 
   assert.match(source, /enable_memory_arena_shrinkage/);
   assert.match(source, /tensor\.dispose/);
   assert.match(source, /MAX_CLASSIFIER_RUNS/);
+  assert.match(source, /DISABLED_LABELS\s*=\s*new Set\(\['donkey'\]\)/);
+  assert.match(source, /disabled_label/);
   assert.match(source, /session\.release/);
   assert.match(source, /capture inference error/);
   assert.doesNotMatch(source, /microsoft|stgcn|unisign|backend/i);

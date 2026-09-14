@@ -38,6 +38,11 @@ class SignBoundaryDetector {
   DateTime? _stillSince;
   bool _activityObserved = false;
 
+  /// Exposes whether the current capture has seen deliberate hand movement.
+  /// The utterance sender uses this only to cancel a pending idle timeout when
+  /// the signer begins the next word; it does not alter boundary detection.
+  bool get hasObservedActivity => _activityObserved;
+
   /// Returns true once the current frame completes an automatic pause.
   bool update(LandmarkFrame frame) {
     if (!_isUsable(frame)) {

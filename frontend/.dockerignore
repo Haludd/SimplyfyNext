@@ -1,0 +1,7 @@
+.dart_tool
+build
+node_modules
+test
+android
+ios
+.git

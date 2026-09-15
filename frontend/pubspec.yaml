@@ -1,0 +1,33 @@
+name: apptesting
+description: SignBridge hackathon app
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  animated_text_kit: ^4.2.2
+  camera: ^0.11.0
+  flutter_tts: ^4.2.0
+  http: ^1.5.0
+  permission_handler: ^13.0.2
+  qr_flutter: ^4.1.0
+  shared_preferences: ^2.0.0
+  speech_to_text: ^7.4.0
+  vector_math: ^2.1.4
+  web: ^1.1.1
+  web_socket_channel: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sign_lexicon.json

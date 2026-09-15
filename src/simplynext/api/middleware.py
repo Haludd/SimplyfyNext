@@ -52,6 +52,15 @@ class RequestBodyLimitMiddleware:
 
         header_map = dict(scope.get("headers", ()))
         raw_content_length = header_map.get(b"content-length")
+        # Bodyless requests have nothing to bound. Passing them through also
+        # avoids waiting for a receive event that newer ASGI test transports do
+        # not emit until the response starts.
+        if scope.get("method") in {"GET", "HEAD", "OPTIONS"} and raw_content_length in {
+            None,
+            b"0",
+        }:
+            await self.app(scope, receive, send)
+            return
         if raw_content_length is not None:
             try:
                 if int(raw_content_length) > max_bytes:

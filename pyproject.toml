@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "httpx2>=2.12,<3",
     "jsonschema>=4.23,<5",
     "mypy>=1.13,<2",
     "pytest>=8.3,<9",

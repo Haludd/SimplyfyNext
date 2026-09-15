@@ -1,0 +1,884 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://simplynext.local/schema/stage1-4-handoff-and-stage5-6-output-1.0.json",
+  "title": "SignBridge Stage 1–4 handoff and Stage 5–6 output shapes",
+  "description": "The Stage 1–4 handoff is authoritative. Stage 5 and Stage 6 only add downstream output shapes.",
+  "$comment": "The primary Stage 3/4 boundary is the in-memory Dart LandmarkFrame. The raw JSON projection omits trackingState and normalisation; runtime definitions below describe the same Dart type after those additions.",
+  "oneOf": [
+    { "$ref": "#/$defs/landmarkFrame" },
+    { "$ref": "#/$defs/landmarkFrameStage3" },
+    { "$ref": "#/$defs/landmarkFrameStage4" },
+    { "$ref": "#/$defs/boundaryEvent" },
+    { "$ref": "#/$defs/featureWindow" },
+    { "$ref": "#/$defs/glossLattice" }
+  ],
+  "$defs": {
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "safeJsonInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "finiteNumber": {
+      "type": "number"
+    },
+    "handedness": {
+      "enum": ["left", "right", "unknown"]
+    },
+    "normalizedPoint": {
+      "type": "object",
+      "required": ["x", "y", "z", "visibility"],
+      "properties": {
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "visibility": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "handPoint": {
+      "type": "object",
+      "required": ["x", "y", "z", "visibility"],
+      "properties": {
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "world_x": { "$ref": "#/$defs/finiteNumber" },
+        "world_y": { "$ref": "#/$defs/finiteNumber" },
+        "world_z": { "$ref": "#/$defs/finiteNumber" },
+        "visibility": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "indexedHandPoint": {
+      "type": "object",
+      "required": ["index", "x", "y", "z", "visibility"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "world_x": { "$ref": "#/$defs/finiteNumber" },
+        "world_y": { "$ref": "#/$defs/finiteNumber" },
+        "world_z": { "$ref": "#/$defs/finiteNumber" },
+        "visibility": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "fingerStatus": {
+      "type": "object",
+      "required": ["status", "confidence", "evidence_frames"],
+      "properties": {
+        "status": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "evidence_frames": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "fingerStatusMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/fingerStatus" }
+    },
+    "hand": {
+      "type": "object",
+      "required": ["handedness", "confidence", "bounding_box", "landmarks", "finger_status"],
+      "properties": {
+        "handedness": { "$ref": "#/$defs/handedness" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "bounding_box": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/finiteNumber" }
+        },
+        "landmarks": {
+          "type": "array",
+          "minItems": 21,
+          "maxItems": 21,
+          "items": { "$ref": "#/$defs/handPoint" }
+        },
+        "finger_status": { "$ref": "#/$defs/fingerStatusMap" }
+      },
+      "additionalProperties": false
+    },
+    "fixedHandWorld": {
+      "type": "object",
+      "required": ["handedness", "confidence", "finger_status", "landmarks"],
+      "properties": {
+        "handedness": { "enum": ["left", "right"] },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "finger_status": { "$ref": "#/$defs/fingerStatusMap" },
+        "landmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexedHandPoint" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "poseLandmark": {
+      "type": "object",
+      "required": ["index", "name", "x", "y", "z", "visibility"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string" },
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "visibility": { "$ref": "#/$defs/confidence" },
+        "presence": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "faceLandmark": {
+      "type": "object",
+      "required": ["index", "x", "y", "z", "visibility"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "name": { "type": "string" },
+        "visibility": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "faceExpression": {
+      "type": "object",
+      "required": ["confidence", "label", "landmarks", "emotion_scores", "source"],
+      "properties": {
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "label": { "type": "string" },
+        "landmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/faceLandmark" }
+        },
+        "emotion_scores": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/confidence" }
+        },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeFingerStatus": {
+      "type": "object",
+      "required": ["status", "confidence", "evidenceFrames"],
+      "properties": {
+        "status": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "evidenceFrames": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "runtimeFaceExpression": {
+      "type": "object",
+      "required": ["confidence", "label", "landmarks", "emotionScores", "source"],
+      "properties": {
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "label": { "type": "string" },
+        "landmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/faceLandmark" }
+        },
+        "emotionScores": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/confidence" }
+        },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "subjectTracking": {
+      "type": "object",
+      "required": ["locked", "area", "missing_frames"],
+      "properties": {
+        "locked": { "type": "boolean" },
+        "visible": { "type": "boolean", "default": true },
+        "center_x": { "$ref": "#/$defs/finiteNumber" },
+        "center_y": { "$ref": "#/$defs/finiteNumber" },
+        "area": { "$ref": "#/$defs/finiteNumber" },
+        "missing_frames": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "handCoordinateAnalysis": {
+      "type": "object",
+      "required": [
+        "handedness",
+        "coordinate_space",
+        "joint_count",
+        "centroid",
+        "bounds",
+        "depth_range",
+        "span"
+      ],
+      "properties": {
+        "handedness": { "type": "string" },
+        "coordinate_space": { "type": "string" },
+        "joint_count": { "type": "integer", "minimum": 0 },
+        "centroid": {
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "$ref": "#/$defs/finiteNumber" },
+            "y": { "$ref": "#/$defs/finiteNumber" },
+            "z": { "$ref": "#/$defs/finiteNumber" }
+          },
+          "additionalProperties": false
+        },
+        "bounds": {
+          "type": "object",
+          "required": ["min_x", "max_x", "min_y", "max_y", "min_z", "max_z"],
+          "properties": {
+            "min_x": { "$ref": "#/$defs/finiteNumber" },
+            "max_x": { "$ref": "#/$defs/finiteNumber" },
+            "min_y": { "$ref": "#/$defs/finiteNumber" },
+            "max_y": { "$ref": "#/$defs/finiteNumber" },
+            "min_z": { "$ref": "#/$defs/finiteNumber" },
+            "max_z": { "$ref": "#/$defs/finiteNumber" }
+          },
+          "additionalProperties": false
+        },
+        "depth_range": { "$ref": "#/$defs/finiteNumber" },
+        "span": { "$ref": "#/$defs/finiteNumber" }
+      },
+      "additionalProperties": false
+    },
+    "landmarkWorlds": {
+      "type": "object",
+      "required": ["left_hand", "right_hand", "pose", "face"],
+      "properties": {
+        "left_hand": { "$ref": "#/$defs/fixedHandWorld" },
+        "right_hand": { "$ref": "#/$defs/fixedHandWorld" },
+        "pose": {
+          "type": "object",
+          "required": ["landmarks"],
+          "properties": {
+            "landmarks": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/poseLandmark" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "face": {
+          "type": "object",
+          "required": ["upper", "mouth", "emotion"],
+          "properties": {
+            "upper": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/faceLandmark" }
+            },
+            "mouth": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/faceLandmark" }
+            },
+            "emotion": {
+              "oneOf": [
+                { "$ref": "#/$defs/faceExpression" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "shoulderPoint": {
+      "oneOf": [
+        { "$ref": "#/$defs/normalizedPoint" },
+        { "type": "null" }
+      ]
+    },
+    "landmarkFrame": {
+      "title": "Harold-compatible LandmarkFrame JSON projection",
+      "description": "The raw JSON projection described by the Stage 1–4 handoff. Stage 3 trackingState and Stage 4 normalisation are runtime-only and are not serialized here.",
+      "type": "object",
+      "required": [
+        "timestamp",
+        "tracking_confidence",
+        "left_shoulder",
+        "right_shoulder",
+        "hands",
+        "hand_coordinate_analysis",
+        "face_expression",
+        "subject_tracking",
+        "landmark_worlds"
+      ],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "tracking_confidence": { "$ref": "#/$defs/confidence" },
+        "left_shoulder": { "$ref": "#/$defs/shoulderPoint" },
+        "right_shoulder": { "$ref": "#/$defs/shoulderPoint" },
+        "hands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hand" }
+        },
+        "hand_coordinate_analysis": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/handCoordinateAnalysis" }
+        },
+        "face_expression": {
+          "oneOf": [
+            { "$ref": "#/$defs/faceExpression" },
+            { "type": "null" }
+          ]
+        },
+        "subject_tracking": {
+          "oneOf": [
+            { "$ref": "#/$defs/subjectTracking" },
+            { "type": "null" }
+          ]
+        },
+        "landmark_worlds": { "$ref": "#/$defs/landmarkWorlds" }
+      },
+      "additionalProperties": false
+    },
+    "landmarkCoordinates": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": {
+          "oneOf": [
+            { "$ref": "#/$defs/finiteNumber" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "trackingStatus": {
+      "enum": ["absent", "degraded", "tracked"]
+    },
+    "trackingIssue": {
+      "enum": [
+        "noLandmarks",
+        "noHands",
+        "missingShoulders",
+        "lowConfidence",
+        "staleNormalisationAnchor",
+        "handednessUncertain"
+      ]
+    },
+    "trackedHandState": {
+      "type": "object",
+      "required": [
+        "sourceHandIndex",
+        "trackId",
+        "stableHandedness",
+        "rightHandednessRunningAverage",
+        "handednessObservationCount",
+        "handednessUncertain"
+      ],
+      "properties": {
+        "sourceHandIndex": { "type": "integer", "minimum": 0 },
+        "trackId": { "type": "string", "minLength": 1 },
+        "stableHandedness": { "$ref": "#/$defs/handedness" },
+        "rightHandednessRunningAverage": { "$ref": "#/$defs/confidence" },
+        "handednessObservationCount": { "type": "integer", "minimum": 0 },
+        "handednessUncertain": { "type": "boolean" },
+        "poseWristSubstituteCoordinates": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "poseWristSubstituteVisibility": {
+          "oneOf": [
+            { "$ref": "#/$defs/confidence" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "trackingState": {
+      "type": "object",
+      "required": ["status", "assessedQuality", "issues", "canNormalise", "trackingEpoch", "hands"],
+      "properties": {
+        "status": { "$ref": "#/$defs/trackingStatus" },
+        "assessedQuality": { "$ref": "#/$defs/confidence" },
+        "issues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trackingIssue" }
+        },
+        "canNormalise": { "type": "boolean" },
+        "trackingEpoch": { "type": "integer", "minimum": 0 },
+        "hands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trackedHandState" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "landmarkSource": {
+      "enum": ["mediaPipe", "poseWristSubstitution"]
+    },
+    "normalisedLandmark": {
+      "type": "object",
+      "required": [
+        "index",
+        "normalisedCoordinates",
+        "velocity",
+        "acceleration",
+        "canonicalWorldCoordinates",
+        "source"
+      ],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "normalisedCoordinates": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "velocity": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "acceleration": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "canonicalWorldCoordinates": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "source": { "$ref": "#/$defs/landmarkSource" }
+      },
+      "additionalProperties": false
+    },
+    "normalisedHand": {
+      "type": "object",
+      "required": ["sourceHandIndex", "trackId", "landmarks"],
+      "properties": {
+        "sourceHandIndex": { "type": "integer", "minimum": 0 },
+        "trackId": { "type": "string", "minLength": 1 },
+        "landmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalisedLandmark" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "normalisationResult": {
+      "type": "object",
+      "required": [
+        "canNormalise",
+        "origin",
+        "scale",
+        "anchorIsStale",
+        "poseLandmarks",
+        "faceUpperLandmarks",
+        "faceMouthLandmarks",
+        "hands"
+      ],
+      "properties": {
+        "canNormalise": { "type": "boolean" },
+        "origin": {
+          "oneOf": [
+            { "$ref": "#/$defs/landmarkCoordinates" },
+            { "type": "null" }
+          ]
+        },
+        "scale": {
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "anchorIsStale": { "type": "boolean" },
+        "poseLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalisedLandmark" }
+        },
+        "faceUpperLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalisedLandmark" }
+        },
+        "faceMouthLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalisedLandmark" }
+        },
+        "hands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalisedHand" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "landmarkFrameRuntime": {
+      "title": "Canonical in-memory Dart LandmarkFrame",
+      "description": "The one public frame type. This uses Dart field names; it is not the raw JSON projection.",
+      "type": "object",
+      "required": [
+        "timestamp",
+        "leftShoulder",
+        "rightShoulder",
+        "leftWrist",
+        "rightWrist",
+        "leftHandVisible",
+        "rightHandVisible",
+        "lightingScore",
+        "trackingConfidence",
+        "featureVector",
+        "hands",
+        "handCoordinateAnalysis",
+        "faceExpression",
+        "poseLandmarks",
+        "faceUpperLandmarks",
+        "faceMouthLandmarks",
+        "subjectTracking",
+        "trackingState",
+        "normalisation"
+      ],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "leftShoulder": { "$ref": "#/$defs/shoulderPoint" },
+        "rightShoulder": { "$ref": "#/$defs/shoulderPoint" },
+        "leftWrist": { "$ref": "#/$defs/shoulderPoint" },
+        "rightWrist": { "$ref": "#/$defs/shoulderPoint" },
+        "leftHandVisible": { "type": "boolean" },
+        "rightHandVisible": { "type": "boolean" },
+        "lightingScore": { "$ref": "#/$defs/confidence" },
+        "trackingConfidence": { "$ref": "#/$defs/confidence" },
+        "featureVector": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/finiteNumber" }
+        },
+        "hands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeTrackedHand" }
+        },
+        "handCoordinateAnalysis": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeHandCoordinateAnalysis" }
+        },
+        "faceExpression": {
+          "oneOf": [
+            { "$ref": "#/$defs/runtimeFaceExpression" },
+            { "type": "null" }
+          ]
+        },
+        "poseLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/poseLandmark" }
+        },
+        "faceUpperLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/faceLandmark" }
+        },
+        "faceMouthLandmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/faceLandmark" }
+        },
+        "subjectTracking": {
+          "oneOf": [
+            { "$ref": "#/$defs/runtimeSubjectTracking" },
+            { "type": "null" }
+          ]
+        },
+        "trackingState": {
+          "oneOf": [
+            { "$ref": "#/$defs/trackingState" },
+            { "type": "null" }
+          ]
+        },
+        "normalisation": {
+          "oneOf": [
+            { "$ref": "#/$defs/normalisationResult" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "landmarkFrameStage4": {
+      "title": "Stage 4 LandmarkFrame handoff to Esther",
+      "allOf": [
+        { "$ref": "#/$defs/landmarkFrameRuntime" },
+        {
+          "type": "object",
+          "properties": {
+            "trackingState": { "$ref": "#/$defs/trackingState" },
+            "normalisation": { "$ref": "#/$defs/normalisationResult" }
+          }
+        }
+      ]
+    },
+    "landmarkFrameStage3": {
+      "title": "Stage 3 LandmarkFrame handoff to Stage 4",
+      "allOf": [
+        { "$ref": "#/$defs/landmarkFrameRuntime" },
+        {
+          "type": "object",
+          "properties": {
+            "trackingState": { "$ref": "#/$defs/trackingState" },
+            "normalisation": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "shoulderPoint": {
+      "oneOf": [
+        { "$ref": "#/$defs/normalizedPoint" },
+        { "type": "null" }
+      ]
+    },
+    "runtimeHandPoint": {
+      "type": "object",
+      "required": ["x", "y", "z", "visibility"],
+      "properties": {
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "z": { "$ref": "#/$defs/finiteNumber" },
+        "worldX": {
+          "oneOf": [
+            { "$ref": "#/$defs/finiteNumber" },
+            { "type": "null" }
+          ]
+        },
+        "worldY": {
+          "oneOf": [
+            { "$ref": "#/$defs/finiteNumber" },
+            { "type": "null" }
+          ]
+        },
+        "worldZ": {
+          "oneOf": [
+            { "$ref": "#/$defs/finiteNumber" },
+            { "type": "null" }
+          ]
+        },
+        "visibility": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeTrackedHand": {
+      "type": "object",
+      "required": ["handedness", "confidence", "landmarks"],
+      "properties": {
+        "handedness": { "$ref": "#/$defs/handedness" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "landmarks": {
+          "type": "array",
+          "minItems": 21,
+          "maxItems": 21,
+          "items": { "$ref": "#/$defs/runtimeHandPoint" }
+        },
+        "boundingBox": { "type": "array", "items": { "$ref": "#/$defs/finiteNumber" } },
+        "fingerStatus": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/runtimeFingerStatus" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtimeSubjectTracking": {
+      "type": "object",
+      "required": ["locked", "visible", "area", "missingFrames"],
+      "properties": {
+        "locked": { "type": "boolean" },
+        "visible": { "type": "boolean" },
+        "centerX": { "type": ["number", "null"] },
+        "centerY": { "type": ["number", "null"] },
+        "area": { "$ref": "#/$defs/finiteNumber" },
+        "missingFrames": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "runtimeHandCoordinateAnalysis": {
+      "type": "object",
+      "required": [
+        "handedness",
+        "coordinateSpace",
+        "jointCount",
+        "centroidX",
+        "centroidY",
+        "centroidZ",
+        "minX",
+        "maxX",
+        "minY",
+        "maxY",
+        "minZ",
+        "maxZ",
+        "depthRange",
+        "span"
+      ],
+      "properties": {
+        "handedness": { "$ref": "#/$defs/handedness" },
+        "coordinateSpace": { "type": "string" },
+        "jointCount": { "type": "integer", "minimum": 0 },
+        "centroidX": { "$ref": "#/$defs/finiteNumber" },
+        "centroidY": { "$ref": "#/$defs/finiteNumber" },
+        "centroidZ": { "$ref": "#/$defs/finiteNumber" },
+        "minX": { "$ref": "#/$defs/finiteNumber" },
+        "maxX": { "$ref": "#/$defs/finiteNumber" },
+        "minY": { "$ref": "#/$defs/finiteNumber" },
+        "maxY": { "$ref": "#/$defs/finiteNumber" },
+        "minZ": { "$ref": "#/$defs/finiteNumber" },
+        "maxZ": { "$ref": "#/$defs/finiteNumber" },
+        "depthRange": { "$ref": "#/$defs/finiteNumber" },
+        "span": { "$ref": "#/$defs/finiteNumber" }
+      },
+      "additionalProperties": false
+    },
+    "frameRange": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "boundaryEvent": {
+      "title": "Stage 5 BoundaryEvent",
+      "type": "object",
+      "required": ["schema_version", "event_type", "frame_index", "reason", "segmenter_arm", "confidence"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "event_type": { "type": "string" },
+        "frame_index": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string" },
+        "segmenter_arm": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "featureWindow": {
+      "title": "Stage 5 FeatureWindow",
+      "description": "Stage 5 output created after segmentation; this is not an upstream LandmarkFrame.",
+      "type": "object",
+      "required": ["schema_version", "window_id", "frame_range", "normalized_coordinates", "velocity", "acceleration", "segmenter_arm", "confidence", "boundary_events"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "window_id": { "type": "string", "minLength": 1 },
+        "frame_range": { "$ref": "#/$defs/frameRange" },
+        "frame_index_range": { "$ref": "#/$defs/frameRange" },
+        "normalized_coordinates": { "type": "array" },
+        "velocity": { "type": "array" },
+        "acceleration": { "type": "array" },
+        "segmenter_arm": { "type": "string" },
+        "confidence": { "type": "object" },
+        "boundary_events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/boundaryEvent" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "glossLatticeProducer": {
+      "type": "object",
+      "required": [
+        "classifier_id",
+        "classifier_version",
+        "confidence_kind",
+        "calibration_version",
+        "vocabulary_version"
+      ],
+      "properties": {
+        "classifier_id": { "$ref": "#/$defs/identifier" },
+        "classifier_version": { "$ref": "#/$defs/identifier" },
+        "confidence_kind": { "const": "calibrated_probability" },
+        "calibration_version": { "$ref": "#/$defs/identifier" },
+        "vocabulary_version": { "$ref": "#/$defs/identifier" }
+      },
+      "additionalProperties": false
+    },
+    "glossCandidate": {
+      "type": "object",
+      "required": ["gloss_id", "rank", "confidence"],
+      "properties": {
+        "gloss_id": { "$ref": "#/$defs/identifier" },
+        "rank": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      },
+      "additionalProperties": false
+    },
+    "glossSlot": {
+      "type": "object",
+      "$comment": "Runtime validation also enforces positive slot duration, containment within the utterance, contiguous ranks, non-increasing confidence, unique gloss IDs, and the provenance/resolution rules.",
+      "required": [
+        "slot_index",
+        "slot_id",
+        "start_ms",
+        "end_ms",
+        "candidates",
+        "resolved_gloss_id",
+        "provenance"
+      ],
+      "properties": {
+        "slot_index": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "slot_id": { "$ref": "#/$defs/identifier" },
+        "start_ms": { "$ref": "#/$defs/safeJsonInteger" },
+        "end_ms": { "$ref": "#/$defs/safeJsonInteger" },
+        "candidates": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/glossCandidate" }
+        },
+        "resolved_gloss_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/identifier" },
+            { "type": "null" }
+          ]
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "classifier_high_confidence",
+            "top_k_signer_confirmed",
+            "fingerspelled",
+            "unresolved"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "glossLattice": {
+      "title": "Frozen GlossLattice v1",
+      "description": "Compact calibrated classifier evidence sent unchanged in one WebSocket text frame. It does not contain raw landmarks, coordinates, feature arrays, or camera frames.",
+      "$comment": "Runtime validation also enforces positive utterance duration, slot containment and non-overlap, contiguous slot indexes, unique slot IDs, strict integer representation, finite confidence values, session/profile equality, monotonic sequencing, and the 32,768-byte UTF-8 transport limit.",
+      "type": "object",
+      "required": ["type", "schema_version", "session_id", "lattice_seq", "utterance_id", "language", "timebase", "started_at_ms", "ended_at_ms", "producer", "slots"],
+      "properties": {
+        "type": { "const": "gloss_lattice" },
+        "schema_version": { "const": "1.0" },
+        "session_id": { "type": "string", "format": "uuid" },
+        "lattice_seq": { "$ref": "#/$defs/safeJsonInteger" },
+        "utterance_id": { "$ref": "#/$defs/identifier" },
+        "language": { "type": "string", "enum": ["sgsl", "asl"] },
+        "timebase": { "const": "session_monotonic_ms" },
+        "started_at_ms": { "$ref": "#/$defs/safeJsonInteger" },
+        "ended_at_ms": { "$ref": "#/$defs/safeJsonInteger" },
+        "producer": { "$ref": "#/$defs/glossLatticeProducer" },
+        "slots": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/glossSlot" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

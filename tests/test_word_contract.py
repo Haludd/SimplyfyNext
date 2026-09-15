@@ -23,7 +23,7 @@ CASES = json.loads((ROOT / "tests/fixtures/translated_sign_invalid_v1.json").rea
 
 
 def test_canonical_fixture_and_schema_match_frozen_document() -> None:
-    contract = ROOT.parent / "TRANSLATED_SIGN_UTTERANCE_V1.md"
+    contract = ROOT / "TRANSLATED_SIGN_UTTERANCE_V1.md"
     blocks = [
         json.loads(block)
         for block in re.findall(r"```json\n(.*?)\n```", contract.read_text(), re.S)

@@ -4,6 +4,12 @@ Temporary two-person text/sign rooms with grounded ASL word-to-sentence translat
 The frontend owns recognition, word translation, camera/audio and speech-to-text. This service
 accepts finalized `TranslatedSignUtterance v1` words or finalized typed/speech text.
 
+The integrated Flutter Web client is in `frontend/`. It combines the local
+PopSign 250 classifier, speech-to-text, room QR/code entry, synchronized chat,
+front/back camera selection and local TTS. See
+[`docs/INTEGRATION_DEPLOY1.md`](docs/INTEGRATION_DEPLOY1.md) for local and hosted
+two-device setup.
+
 ## Implemented
 
 - Strict ASL-only ingress, two participant capabilities, exact sequence/digest replay, bounded

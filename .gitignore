@@ -31,6 +31,7 @@ aws_credentials
 *.blob
 *.caffemodel
 *.onnx
+!frontend/web/models/asl-signs/asl-signs.onnx
 *.pt
 *.pth
 *.h5
@@ -49,3 +50,7 @@ data/interim/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local verification output
+/.flutter-verify-*/
+/test-results/

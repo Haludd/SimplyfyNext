@@ -1,0 +1,35 @@
+{
+  "version": "2026-09-seed-2",
+  "note": "Reference catalog only. Do not treat dictionary pages as a machine-learning dataset without permission. Each sign language needs its own consented examples and model.",
+  "languages": [
+    {
+      "code": "ASL",
+      "name": "American Sign Language",
+      "source": "https://www.handspeak.com/word/",
+      "source_type": "dictionary_reference",
+      "entries": ["hello", "help", "water", "please"]
+    },
+    {
+      "code": "BSL",
+      "name": "British Sign Language",
+      "source": "https://bslsignbank.ucl.ac.uk/about/dictionary/",
+      "source_type": "dictionary_reference",
+      "entries": [],
+      "note": "Populate from an approved SignBank export or consented training set. Do not assume BSL signs match ASL."
+    },
+    {
+      "code": "SgSL",
+      "name": "Singapore Sign Language",
+      "source": "https://sadeaf.org.sg/faq-on-sadeaf-and-about-the-deaf-and-hard-of-hearing/faq-on-singapore-sign-language/",
+      "source_type": "community_reference",
+      "entries": [],
+      "note": "Populate with community-approved SgSL examples and annotations."
+    }
+  ],
+  "entries": [
+    {"id": "hello", "language": "ASL", "label": "Hello", "source": "https://www.handspeak.com/word/hello/", "parameters": ["handshape", "movement", "location", "handedness"]},
+    {"id": "help", "language": "ASL", "label": "Help", "source": "https://www.handspeak.com/word/help/", "parameters": ["handshape", "movement", "location"]},
+    {"id": "water", "language": "ASL", "label": "Water", "source": "https://www.handspeak.com/word/water/", "parameters": ["handshape", "movement", "location"]},
+    {"id": "please", "language": "ASL", "label": "Please", "source": "https://www.handspeak.com/word/please/", "parameters": ["handshape", "movement", "location"]}
+  ]
+}

@@ -17,7 +17,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from simplynext import __version__
 from simplynext.api.middleware import (
-    PrivacyHeadersMiddleware, RequestBodyLimitMiddleware, SocketAdmissionMiddleware,
+    PrivacyHeadersMiddleware,
+    RequestBodyLimitMiddleware,
+    SocketAdmissionMiddleware,
 )
 from simplynext.api.operator import require_operator_token
 from simplynext.api.room_routes import room_router
@@ -63,7 +65,8 @@ def create_app(
             assembler_token_budget=runtime_settings.context_assembler_token_budget,
             critic_token_budget=runtime_settings.context_critic_token_budget,
         ),
-        word_translation or build_word_translation_engine(runtime_settings, provider_client, metrics),
+        word_translation
+        or build_word_translation_engine(runtime_settings, provider_client, metrics),
         slots=slots,
         metrics=metrics,
         timeout_seconds=runtime_settings.room_translation_timeout_seconds,
@@ -132,7 +135,17 @@ def create_app(
 
     @application.exception_handler(RoomFailure)
     async def room_failure_handler(request: object, exc: RoomFailure) -> JSONResponse:
+        metrics.increment(f"room_rejected_{exc.code}")
         return JSONResponse({"error": exc.code}, status_code=exc.status)
+
+    @application.exception_handler(Exception)
+    async def internal_failure_handler(request: object, exc: Exception) -> JSONResponse:
+        metrics.increment("internal_failures")
+        return JSONResponse(
+            {"error": "internal_error"},
+            status_code=500,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
 
     @application.websocket(f"{runtime_settings.api_prefix}/rooms/{{code}}/events")
     async def stream_room(websocket: WebSocket, code: str) -> None:

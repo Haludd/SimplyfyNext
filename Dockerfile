@@ -3,7 +3,14 @@
 # refresh and a vulnerability scan. It currently resolves to Python 3.12 slim Trixie.
 ARG PYTHON_IMAGE=python:3.12-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
-FROM ${PYTHON_IMAGE} AS builder
+FROM ${PYTHON_IMAGE} AS patched-base
+# Security updates published since the pinned official base. Retain the resolved
+# OS inventory + image digest in release evidence; the scanner remains mandatory.
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM patched-base AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -22,18 +29,10 @@ COPY src ./src
 COPY data ./data
 COPY docker ./docker
 COPY scripts/package_smoke.py /tmp/package_smoke.py
-COPY scripts/resolve_linux_production_lock.sh /tmp/resolve_linux_production_lock.sh
-
-# Resolve on Linux so platform wheels are selected for the target image.  A
-# reviewed docker/pylock.linux.toml is checked for reproducible releases; the
-# ephemeral fallback keeps an initial clean clone buildable before that file exists.
-RUN if [ -f docker/pylock.linux.toml ]; then \
-      /tmp/resolve_linux_production_lock.sh docker/pylock.linux.toml \
-      && python -m pip install --no-cache-dir -r docker/pylock.linux.toml; \
-    else \
-      UPDATE_LINUX_LOCK=1 /tmp/resolve_linux_production_lock.sh /tmp/pylock.linux.toml \
-      && python -m pip install --no-cache-dir -r /tmp/pylock.linux.toml; \
-    fi \
+# Releases install the checked-in Linux AMD64 lock. Resolution is a separate,
+# explicit update/review action; a missing lock must fail the image build.
+RUN python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
+    && python -m pip install --no-cache-dir -r docker/pylock.linux.toml \
     && python -m pip install --no-cache-dir --no-deps . \
     && python -m pip check \
     && cd /tmp \
@@ -43,7 +42,9 @@ RUN if [ -f docker/pylock.linux.toml ]; then \
 # runtime does not carry pip's vendored packages or an unnecessary installer.
 RUN python -m pip uninstall --yes pip setuptools
 
-FROM ${PYTHON_IMAGE} AS runtime
+FROM patched-base AS runtime
+ARG SOURCE_REVISION=unreviewed
+LABEL org.opencontainers.image.revision=${SOURCE_REVISION}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -57,14 +58,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SIMPLYNEXT_ANTHROPIC_ENABLED=false
 
 WORKDIR /app
-RUN groupadd --system simplynext \
-    && useradd --system --gid simplynext --home-dir /app --no-create-home simplynext \
+RUN groupadd --system --gid 10001 simplynext \
+    && useradd --system --uid 10001 --gid simplynext --home-dir /app --no-create-home simplynext \
+    && mkdir /app/spend \
+    && chown simplynext:simplynext /app/spend \
     && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
     && rm -rf /usr/local/lib/python3.12/site-packages/pip \
         /usr/local/lib/python3.12/site-packages/pip-*.dist-info
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=simplynext:simplynext data/word_templates.example.json /app/data/word_templates.example.json
+COPY scripts/production_preflight.py /app/ops/production_preflight.py
 
 USER simplynext
 EXPOSE 8000

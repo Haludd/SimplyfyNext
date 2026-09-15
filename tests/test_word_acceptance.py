@@ -191,6 +191,7 @@ def test_production_requires_exact_qualified_evidence(tmp_path, mutation):
     settings = Settings(
         _env_file=None,
         environment="production",
+        provider_spend_journal_path=tmp_path / "spend.json",
         anthropic_enabled=True,
         anthropic_lease_owner="test",
         anthropic_input_usd_per_million_tokens=1,
@@ -213,6 +214,7 @@ def test_matching_test_evidence_qualifies_without_calling_provider(tmp_path):
     settings = Settings(
         _env_file=None,
         environment="production",
+        provider_spend_journal_path=tmp_path / "spend.json",
         anthropic_enabled=True,
         anthropic_lease_owner="test",
         anthropic_input_usd_per_million_tokens=1,

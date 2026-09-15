@@ -34,7 +34,7 @@ def require_operator_token(
             detail="Invalid operator authorization",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not hmac.compare_digest(presented.strip(), token.get_secret_value()):
+    if not hmac.compare_digest(presented.strip().encode(), token.get_secret_value().encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid operator authorization",

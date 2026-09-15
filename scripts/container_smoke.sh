@@ -15,7 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker run --detach --rm \
+docker run --detach --rm --platform linux/amd64 \
   --name "${container_name}" \
   --publish "${host_port}:${container_port}" \
   --env PORT="${container_port}" \

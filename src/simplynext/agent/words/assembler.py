@@ -108,9 +108,13 @@ class WordProvider:
             role: files("simplynext.agent.prompts").joinpath(f"word_{role}_v1.txt").read_text()
             for role in ("assembler", "critic")
         }
+        self.system_prompts = {
+            role: self.prompts[role] + "\nOutput schema:\n" + json.dumps(model.model_json_schema())
+            for role, model in (("assembler", WordDraft), ("critic", WordVerdict))
+        }
 
     def request(self, role: str, payload: dict[str, Any], schema: type[M], request_id: str) -> M:
-        prompt = self.prompts[role] + "\nOutput schema:\n" + json.dumps(schema.model_json_schema())
+        prompt = self.system_prompts[role]
         response = self.client.converse(
             modelId=self.model_id,
             system=[{"text": prompt}],

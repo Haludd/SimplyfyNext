@@ -28,6 +28,11 @@ if [[ "${image_digest}" == "<no value>" ]]; then
   image_digest=""
 fi
 image_content_id="$(docker image inspect --format='{{.Id}}' "${image}")"
+image_source_sha="$(docker image inspect --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' "${image}")"
+if [[ "${image_source_sha}" != "${source_sha}" ]]; then
+  echo "Image source revision does not match the clean release commit; rebuild with SOURCE_REVISION" >&2
+  exit 2
+fi
 build_timestamp="$(docker image inspect --format='{{.Created}}' "${image}" 2>/dev/null || true)"
 if [[ -z "${build_timestamp}" || "${build_timestamp}" == "<no value>" ]]; then
   build_timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -48,6 +53,7 @@ print(json.dumps([
     for distribution in sorted(metadata.distributions(), key=lambda item: item.metadata["Name"].lower())
 ]))
 ' > "${temporary_dir}/dependencies.json"
+docker run --rm --entrypoint dpkg-query "${image}" -W > "${temporary_dir}/os-packages.txt"
 
 # Docker Scout is the required release scanner. CRITICAL and HIGH findings
 # block release; lower severities remain visible in the attached scan output.
@@ -59,7 +65,7 @@ fi
 
 python - "${output_path}" "${image}" "${source_sha}" "${image_digest}" "${image_content_id}" "${build_timestamp}" \
   "${temporary_dir}/python.txt" "${temporary_dir}/pip.txt" "${temporary_dir}/dependencies.json" \
-  "${scan_path}" "${test_results_path}" <<'PY'
+  "${scan_path}" "${test_results_path}" "${temporary_dir}/os-packages.txt" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -80,6 +86,7 @@ import sys
     dependencies_path,
     scan_path,
     test_results_path,
+    os_packages_path,
 ) = sys.argv[1:]
 
 
@@ -108,12 +115,14 @@ evidence = {
     "python_version": read_one_line(python_path),
     "pip_version": read_one_line(pip_path),
     "dependency_inventory": dependencies,
+    "os_package_inventory": pathlib.Path(os_packages_path).read_text().splitlines(),
     "test_results": test_results,
     "vulnerability_scan": {
         "scanner": "docker scout cves",
         "output_path": scan_path,
         "blocking_severities": ["CRITICAL", "HIGH"],
         "status": "passed",
+        "sha256": hashlib.sha256(pathlib.Path(scan_path).read_bytes()).hexdigest(),
     },
 }
 pathlib.Path(output_path).write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")

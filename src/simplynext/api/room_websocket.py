@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from time import perf_counter
 from typing import cast
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -49,10 +50,12 @@ async def room_socket(socket: WebSocket, code: str) -> None:
         async def write_events() -> None:
             while True:
                 event: RoomEvent = await queue.get()
+                started = perf_counter()
                 await asyncio.wait_for(
                     socket.send_json(event.model_dump(mode="json", exclude_none=True)),
                     timeout=5,
                 )
+                services.metrics.observe_ms("room_socket_send", (perf_counter() - started) * 1000)
                 if isinstance(event, RoomEnded):
                     await socket.close(code=1000)
                     return

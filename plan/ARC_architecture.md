@@ -61,3 +61,22 @@ can remain until then, and their output cannot be committed. Provider retention 
 
 Exactly one process, worker and replica is required. Restart loses all rooms. Scaling/restart
 survival requires a separate reviewed ephemeral shared-store design with atomic deletion and replay.
+
+## Security, spend and latency controls (2026-09-15)
+
+Production rejects wildcard/non-HTTPS origins and DEBUG logging. Private headers cover diagnostics
+and errors; the formatter drops external SDK/access messages, arbitrary extras and exception text.
+Body collection has a deadline and coalesced bounded buffers. Socket admission limits open peers
+and attempts before authentication. Uvicorn explicitly disables forwarded-IP trust, access logging
+and WebSocket compression, and bounds receive queues. Edge client-IP controls need hosted testing.
+
+A short shared lock admits provider reservations against request, room, hourly and deployment
+balances. Context variables carry ephemeral spend scopes into threads; capabilities are never
+provider metadata. End closes/zeros room balances, and late settlement cannot recreate them.
+Production persists only numeric total/hourly charges atomically before dispatch, with a single
+writer lock. Unknown/in-flight calls retain their maximum charge after restart. Missing/corrupt/
+unwritable journals fail closed. Operators must preserve/reconcile the volume and account-wide costs.
+
+SDK attempts default to one; higher attempts reserve and conservatively charge unknown retries.
+Reused clients/pools/prompts and stage metrics cover input/output/cache token classes, revisions,
+context bounds and p50/p95 over at most 2,048 timing samples. See [runbook](HOSTED_VERIFICATION.md).

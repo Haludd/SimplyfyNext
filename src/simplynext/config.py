@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     provider_request_spend_limit_usd: Decimal = Field(default=Decimal("0.50"), gt=0, le=5)
     provider_room_spend_limit_usd: Decimal = Field(default=Decimal("2.00"), gt=0, le=20)
     provider_hourly_spend_limit_usd: Decimal = Field(default=Decimal("5.00"), gt=0, le=20)
+    provider_spend_journal_path: Path | None = None
     http_body_timeout_seconds: float = Field(default=10, gt=0, le=60)
     websocket_max_connections: int = Field(default=400, ge=1, le=4000)
     websocket_connections_per_minute: int = Field(default=60, ge=1, le=600)
@@ -154,7 +155,11 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "word_policy_path", "word_templates_path", "word_evaluation_path", mode="before"
+        "word_policy_path",
+        "word_templates_path",
+        "word_evaluation_path",
+        "provider_spend_journal_path",
+        mode="before",
     )
     @classmethod
     def empty_optional_value_is_unconfigured(cls, value: object) -> object:
@@ -218,9 +223,14 @@ class Settings(BaseSettings):
         for origin in self.allowed_origins:
             parsed = urlsplit(origin)
             if (
-                parsed.scheme not in {"https", "http"} or not parsed.hostname
-                or parsed.username is not None or parsed.password is not None
-                or parsed.path or parsed.query or parsed.fragment or "*" in origin
+                parsed.scheme not in {"https", "http"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or "*" in origin
                 or (self.environment == "production" and parsed.scheme != "https")
             ):
                 raise ValueError("allowed_origins must contain exact origins (HTTPS in production)")
@@ -228,12 +238,20 @@ class Settings(BaseSettings):
             raise ValueError("allowed_hosts must be exact in production")
         if self.environment == "production" and self.log_level == "DEBUG":
             raise ValueError("DEBUG logging is prohibited in production")
-        if self.environment == "production" and self.anthropic_enabled and (
-            self.anthropic_api_base_url != DEFAULT_ANTHROPIC_API_BASE_URL
+        if (
+            self.environment == "production"
+            and self.anthropic_enabled
+            and (self.anthropic_api_base_url != DEFAULT_ANTHROPIC_API_BASE_URL)
         ):
             raise ValueError("production Anthropic credentials require the official API endpoint")
         if self.provider_request_spend_limit_usd > self.provider_room_spend_limit_usd:
             raise ValueError("request spend limit cannot exceed room spend limit")
+        if (
+            self.environment == "production"
+            and (self.bedrock_enabled or self.anthropic_enabled)
+            and self.provider_spend_journal_path is None
+        ):
+            raise ValueError("production provider requires a persistent spend journal path")
         if self.environment == "production" and not self.allowed_hosts:
             raise ValueError("allowed_hosts must contain the public production hostname")
         if self.environment == "production" and "*" in self.allowed_hosts:

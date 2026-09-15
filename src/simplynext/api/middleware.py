@@ -15,7 +15,11 @@ class RequestBodyLimitMiddleware:
     """Reject oversized HTTP bodies even when content length is omitted."""
 
     def __init__(
-        self, app: ASGIApp, *, max_bytes: int, room_prefix: str = "/v1/rooms",
+        self,
+        app: ASGIApp,
+        *,
+        max_bytes: int,
+        room_prefix: str = "/v1/rooms",
         timeout_seconds: float = 10,
     ) -> None:
         if max_bytes < 1:
@@ -74,9 +78,9 @@ class RequestBodyLimitMiddleware:
         except TimeoutError:
             await JSONResponse({"error": "request_timeout"}, status_code=408)(scope, receive, send)
             return
-        buffered: deque[Message] = deque([
-            {"type": "http.request", "body": bytes(body), "more_body": False}
-        ])
+        buffered: deque[Message] = deque(
+            [{"type": "http.request", "body": bytes(body), "more_body": False}]
+        )
         body.clear()
 
         async def receive_replayed() -> Message:
@@ -105,9 +109,16 @@ class PrivacyHeadersMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         async def private_send(message: Message) -> None:
             if message["type"] in {"http.response.start", "websocket.accept"}:
-                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() not in {
-                    b"cache-control", b"referrer-policy", b"x-content-type-options",
-                }]
+                headers = [
+                    (k, v)
+                    for k, v in message.get("headers", [])
+                    if k.lower()
+                    not in {
+                        b"cache-control",
+                        b"referrer-policy",
+                        b"x-content-type-options",
+                    }
+                ]
                 message["headers"] = headers + [
                     (b"cache-control", b"no-store"),
                     (b"referrer-policy", b"no-referrer"),
@@ -122,7 +133,12 @@ class SocketAdmissionMiddleware:
     """Bound all open sockets, including peers that never authenticate."""
 
     def __init__(
-        self, app: ASGIApp, *, maximum: int, per_minute: int, global_per_minute: int,
+        self,
+        app: ASGIApp,
+        *,
+        maximum: int,
+        per_minute: int,
+        global_per_minute: int,
     ) -> None:
         self.app = app
         self.maximum = maximum

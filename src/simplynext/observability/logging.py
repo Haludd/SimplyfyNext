@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+
 class JsonFormatter(logging.Formatter):
     """Only application-authored messages; no SDK wire logs or exception strings."""
 

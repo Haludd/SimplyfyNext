@@ -84,9 +84,10 @@ the `dev` extra. It is not the cross-platform container install mechanism. Phase
 `docker/requirements-production.in`, `scripts/resolve_linux_production_lock.sh`, and the
 `make production-lock` target. Run that workflow in a Python 3.12 Linux builder, review and commit
 `docker/pylock.linux.toml`, then rerun without `UPDATE_LINUX_LOCK=1`; the script fails if the
-reviewed Linux resolution changes (or if the reviewed file is missing). The Docker builder invokes
-the same workflow with an explicit first-generation override for its ephemeral in-image lock, so a
-clean clone remains buildable before a lock refresh is committed.
+reviewed Linux resolution changes (or if the reviewed file is missing). The Docker builder installs
+the checked-in Linux AMD64 lock directly and fails if it is missing; release builds never silently
+resolve new production versions. Build Linux AMD64 explicitly. OS updates are applied over the
+pinned base; retain the final digest/inventory and require a fresh release vulnerability scan.
 
 Do not assume a macOS wheel URL from the current lock can install in Linux.
 

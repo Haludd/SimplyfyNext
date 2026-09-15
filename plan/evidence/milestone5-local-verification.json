@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-15",
+  "scope": "local preparation only; no deployment or live provider use",
+  "release_status": "blocked",
+  "image": "simplynext-backend:milestone5-prep",
+  "image_index_digest": "sha256:3ebc8b7b11768acf3d90240eb03c940eed25b9de75765ac016b2897fb19aaddc",
+  "image_source_label": "unreviewed",
+  "worktree_source_sha256": "c904c135b81e73f21bedef342ec07b83df3feccacebc229a4c29cf6951fa6dd4",
+  "wheel_sha256": "035e44c301ce31d81e9a8babd6e5765af0fd4a1ea1b92d0c0fae1cbc6844c5e4",
+  "checks": {
+    "macos_pytest": {
+      "passed": 320,
+      "warnings": 1
+    },
+    "linux_amd64_installed_wheel_pytest": {
+      "passed": 320,
+      "warnings": 2
+    },
+    "ruff": "passed",
+    "mypy": {
+      "status": "passed",
+      "files": 43
+    },
+    "dependency_check": "passed",
+    "contract_export_drift": "passed",
+    "clean_wheel_install_and_outside_checkout_resources": "passed",
+    "container_ports": [
+      8000,
+      8765
+    ],
+    "container_protocol_and_graceful_shutdown": "passed",
+    "official_railway_schema": "passed",
+    "shell_syntax": "passed",
+    "synthetic_mixed_room_turns": [
+      60,
+      120,
+      240
+    ]
+  },
+  "vulnerability_scan": {
+    "critical": 0,
+    "high": 1,
+    "exit_code": 2,
+    "status": "blocked",
+    "remaining": [
+      "CVE-2026-85091"
+    ],
+    "initial_blocking_count": 15,
+    "report": "milestone5-image-scan.txt"
+  },
+  "unverified": [
+    "clean reviewed release commit/image",
+    "hosted HTTPS/WSS and physical devices",
+    "real producer/model qualification",
+    "frontend integration and sign-off",
+    "platform spend-volume persistence",
+    "live credentials/retention/monitoring/rollback"
+  ]
+}

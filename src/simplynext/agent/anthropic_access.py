@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from typing import Any, Protocol, cast
 
 import httpx
@@ -41,6 +42,7 @@ def create_anthropic_client(
     connect_timeout_seconds: float = 5.0,
     read_timeout_seconds: float = 60.0,
     total_max_attempts: int = 3,
+    max_connections: int = 4,
 ) -> AnthropicConverseAdapter:
     """Create a direct Anthropic client without making a network request.
 
@@ -70,6 +72,12 @@ def create_anthropic_client(
             connect=connect_timeout_seconds,
         ),
         "max_retries": max(0, total_max_attempts - 1),
+        "http_client": anthropic.DefaultHttpxClient(
+            limits=httpx.Limits(
+                max_connections=max_connections,
+                max_keepalive_connections=max_connections,
+            ),
+        ),
     }
     if workspace_id:
         client_kwargs["default_headers"] = {"anthropic-workspace-id": workspace_id}
@@ -138,16 +146,20 @@ def _structured_output_config(raw_metadata: object) -> dict[str, Any] | None:
     if not isinstance(role, str):
         return None
     if role in {"word_assembler", "word_critic"}:
-        from anthropic import transform_schema
-
-        from simplynext.agent.words.state import WordDraft, WordVerdict
-
-        model = WordDraft if role == "word_assembler" else WordVerdict
         # Messages.create does not transform constraints automatically. Keep the
         # full schema in the local parser and system rules; send the SDK-supported
         # projection to the provider grammar compiler.
-        return {"format": {"type": "json_schema", "schema": transform_schema(model)}}
+        return {"format": {"type": "json_schema", "schema": word_output_schema(role)}}
     return None
+
+
+@lru_cache(maxsize=2)
+def word_output_schema(role: str) -> dict[str, Any]:
+    from anthropic import transform_schema
+
+    from simplynext.agent.words.state import WordDraft, WordVerdict
+
+    return dict(transform_schema(WordDraft if role == "word_assembler" else WordVerdict))
 
 
 def _system_to_anthropic(raw_system: object) -> list[dict[str, Any]]:

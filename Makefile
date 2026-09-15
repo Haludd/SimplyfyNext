@@ -27,7 +27,14 @@ production-lock:
 	scripts/resolve_linux_production_lock.sh docker/pylock.linux.toml
 
 docker-build:
-	docker build --pull -t $(IMAGE) .
+	docker build --platform linux/amd64 --pull \
+		--build-arg SOURCE_REVISION=$$(git rev-parse HEAD) -t $(IMAGE) .
+
+benchmark:
+	$(PYTHON) scripts/benchmark_rooms.py --output /tmp/simplynext-room-benchmark.json
+
+production-preflight:
+	$(PYTHON) scripts/production_preflight.py
 
 container-smoke:
 	scripts/container_smoke.sh $(IMAGE) $(SMOKE_HOST_PORT) 8000

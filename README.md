@@ -16,6 +16,10 @@ accepts finalized `TranslatedSignUtterance v1` words or finalized typed/speech t
   evaluation gate. See [acceptance policy](plan/WORD_ACCEPTANCE_POLICY.md).
 - End/expiry/shutdown erase all room-owned content, credentials, replay and pending work.
   Already-issued synchronous provider calls finish under SDK timeouts and their results are discarded.
+- Request/room/hour/deployment spend reservations; production persists only numeric spend totals
+  so restart cannot reset the allowance.
+- Exact production HTTPS origins, bounded unauthenticated sockets/body reads, explicit proxy
+  distrust, private headers, content-free logs and rolling p50/p95 stage measurements.
 
 Milestones 2–3 and the backend removal exit of milestone 4 are implemented. Frontend execution,
 owner sign-off, representative producer/model qualification and hosted/mobile verification remain
@@ -83,6 +87,12 @@ Use HTTPS/WSS, exact allowed origins/hosts, Railway's injected `PORT`, `/readyz`
 monitoring. Public docs are disabled in production; `/metrics` needs the separate operator token.
 Access logging is disabled by the runner to avoid request URLs in service logs. Do not enable SDK
 wire debugging. Provider retention is separate from room deletion.
+
+[Hosted verification preparation](plan/HOSTED_VERIFICATION.md) supplies the production profile,
+Railway manifest, spend-volume setup, no-network configuration gate and device matrix.
+Root `PLN_plan_v1.md` section 14 tracks frontend/producer/operator acceptance. A blocking image
+vulnerability scan prevents release even when local tests pass. Preparation does not deploy or
+enable a live provider.
 
 ```bash
 make docker-build IMAGE=simplynext-backend:local

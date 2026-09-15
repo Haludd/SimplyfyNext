@@ -14,12 +14,14 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
+from pathlib import Path
 from threading import Lock
-from time import monotonic
+from time import time
 from typing import Any, Final, Protocol, cast
 
 from simplynext.observability.metrics import MetricsRegistry
 from simplynext.spend import SPEND_LOCK, SpendScope, current_spend_scope
+from simplynext.spend_journal import SpendJournal
 
 DEFAULT_BEDROCK_INPUT_USD_PER_MILLION: Final = Decimal("1.10")
 DEFAULT_BEDROCK_OUTPUT_USD_PER_MILLION: Final = Decimal("5.50")
@@ -68,6 +70,7 @@ def create_bedrock_client(
     connect_timeout_seconds: float = 5.0,
     read_timeout_seconds: float = 30.0,
     total_max_attempts: int = 3,
+    max_connections: int = 4,
 ) -> _ConverseClient:
     """Create a bounded Bedrock Runtime client without making a network request."""
 
@@ -84,6 +87,7 @@ def create_bedrock_client(
             config=Config(
                 connect_timeout=connect_timeout_seconds,
                 read_timeout=read_timeout_seconds,
+                max_pool_connections=max_connections,
                 retries={"mode": "standard", "total_max_attempts": total_max_attempts},
             ),
         ),
@@ -231,7 +235,8 @@ class BedrockCostGuard:
         room_limit_usd: Decimal | None = None,
         hourly_limit_usd: Decimal | None = None,
         total_max_attempts: int = 1,
-        clock: Callable[[], float] = monotonic,
+        clock: Callable[[], float] = time,
+        journal_path: Path | None = None,
     ) -> None:
         _require_money(spend_limit_usd, "spend_limit_usd", positive=True)
         _require_money(known_spend_usd, "known_spend_usd", positive=False)
@@ -256,6 +261,19 @@ class BedrockCostGuard:
         # Minute buckets conservatively retain charges for 60–61 minutes. No IDs.
         self._hourly: dict[int, Decimal] = {int(clock() // 60): known_spend_usd}
         self._lock = SPEND_LOCK
+        self._journal = None if journal_path is None else SpendJournal(journal_path)
+        if self._journal is not None:
+            previous, buckets = self._journal.read()
+            self._estimated_spend_usd = max(previous, known_spend_usd)
+            if self._estimated_spend_usd > spend_limit_usd:
+                raise ValueError("persisted spend exceeds deployment ceiling")
+            self._hourly = buckets
+            # Additional operator-reconciled charges have unknown age; retain a full hour.
+            if known_spend_usd > previous:
+                bucket = int(clock() // 60)
+                self._hourly[bucket] = buckets.get(bucket, Decimal(0)) + known_spend_usd - previous
+            self._prune_hourly()
+            self._persist()
 
     @property
     def pricing(self) -> BedrockPricing:
@@ -301,7 +319,9 @@ class BedrockCostGuard:
                     scope=rejected_scope,
                 )
             reservation = _Reservation(
-                self._next_reservation_id, maximum_cost, scope,
+                self._next_reservation_id,
+                maximum_cost,
+                scope,
                 single_cost * (self._attempts - 1),
             )
             self._next_reservation_id += 1
@@ -309,6 +329,7 @@ class BedrockCostGuard:
             if scope is not None:
                 scope.room.reserved += maximum_cost
                 scope.request.reserved += maximum_cost
+            self._persist()  # Failure blocks dispatch and retains the reservation.
             return reservation
 
     def settle(
@@ -320,9 +341,9 @@ class BedrockCostGuard:
         """Commit actual estimated cost, or the full reservation when usage is unknown."""
 
         actual_cost = (
-            reservation.maximum_cost_usd if usage is None else (
-                self._pricing.usage_cost_usd(usage) + reservation.unreported_retry_cost
-            )
+            reservation.maximum_cost_usd
+            if usage is None
+            else (self._pricing.usage_cost_usd(usage) + reservation.unreported_retry_cost)
         )
         with self._lock:
             reserved_cost = self._reservations.pop(reservation.reservation_id, None)
@@ -338,12 +359,26 @@ class BedrockCostGuard:
                         account.reserved -= reserved_cost
                         account.spent += actual_cost
             self._completed_calls += 1
+            self._persist()
             snapshot = self._snapshot_locked()
         return actual_cost, snapshot
 
     def _prune_hourly(self) -> None:
         cutoff = int(self._clock() // 60) - 60
         self._hourly = {k: v for k, v in self._hourly.items() if k >= cutoff}
+
+    def _persist(self) -> None:
+        if self._journal is None:
+            return
+        reserved = sum(self._reservations.values(), Decimal(0))
+        hourly = dict(self._hourly)
+        bucket = int(self._clock() // 60)
+        hourly[bucket] = hourly.get(bucket, Decimal(0)) + reserved
+        try:
+            self._journal.write(self._estimated_spend_usd + reserved, hourly)
+        except OSError:
+            logger.error("spend_journal_write_failed")
+            raise
 
     def snapshot(self) -> BedrockSpendSnapshot:
         with self._lock:
@@ -725,14 +760,11 @@ def _conservative_input_token_bound(request: Mapping[str, Any]) -> int:
         "word_assembler",
         "word_critic",
     }:
-        from anthropic import transform_schema
+        from simplynext.agent.anthropic_access import word_output_schema
 
-        from simplynext.agent.words.state import WordDraft, WordVerdict
-
-        model = WordDraft if metadata["simplynext_role"] == "word_assembler" else WordVerdict
         # The direct adapter also sends this schema as structured output config.
         # Reserve for both copies; the Bedrock path conservatively over-reserves.
-        countable["word_output_schema"] = transform_schema(model)
+        countable["word_output_schema"] = word_output_schema(metadata["simplynext_role"])
     try:
         encoded = json.dumps(
             countable,

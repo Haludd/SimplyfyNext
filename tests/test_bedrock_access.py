@@ -172,6 +172,7 @@ def test_lowered_spend_ceiling_blocks_the_call_before_dispatch() -> None:
     assert client.spend.estimated_spend_usd == 0
     assert client.spend.rejected_calls == 1
     assert metrics.snapshot()["counters"] == {
+        "bedrock_budget_rejected_process": 1,
         "bedrock_model_calls_budget_rejected": 1,
         "bedrock_model_calls_total": 1,
     }

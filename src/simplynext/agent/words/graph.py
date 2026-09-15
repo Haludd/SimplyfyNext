@@ -6,15 +6,15 @@ from functools import partial
 from time import perf_counter
 from typing import TypeVar
 
-from simplynext.agent.words.assembler import WordAssembler, WordOutputFailure, validate_grounding
 from simplynext.agent.bedrock_access import BedrockBudgetExceeded
+from simplynext.agent.words.assembler import WordAssembler, WordOutputFailure, validate_grounding
 from simplynext.agent.words.critic import WordCritic
 from simplynext.agent.words.repair import repair
 from simplynext.agent.words.state import WordDraft, WordVerdict
 from simplynext.contracts.room_events import AcceptedOutcome, TerminalOutcome
 from simplynext.contracts.translated_sign_utterance import TranslatedSignUtteranceV1
-from simplynext.rooms.context import ConversationContext
 from simplynext.observability.metrics import MetricsRegistry
+from simplynext.rooms.context import ConversationContext
 
 T = TypeVar("T")
 
@@ -89,6 +89,8 @@ class WordGraph:
                     ),
                     "word_revision_assembler" if revision else "word_assembler",
                 )
+                if not isinstance(draft, WordDraft):
+                    return repair("invalid_output")
                 validate_grounding(draft, utterance)
                 current_draft = draft
                 verdict = await self._call(
@@ -100,6 +102,8 @@ class WordGraph:
                     ),
                     "word_revision_critic" if revision else "word_critic",
                 )
+                if not isinstance(verdict, WordVerdict):
+                    return repair("invalid_output")
                 if any(index >= len(utterance.words) for index in verdict.target_indices):
                     return repair("invalid_output")
                 reference_sequences = {
@@ -133,9 +137,11 @@ class WordGraph:
             return repair("revision_exhausted", () if verdict is None else verdict.target_indices)
         except BedrockBudgetExceeded:
             # Use an existing v1 reason; do not expand the frozen event union.
-            return repair("capacity").model_copy(update={
-                "prompt": "Signing translation budget reached. Please type to continue this chat."
-            })
+            return repair("capacity").model_copy(
+                update={
+                    "prompt": "Translation budget reached. Please type to continue this chat."
+                }
+            )
         except WordOutputFailure as exc:
             return repair(exc.reason)
         except ValueError:

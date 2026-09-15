@@ -21,6 +21,14 @@ from simplynext.observability import MetricsRegistry
 def build_provider_client(
     settings: Settings, metrics: MetricsRegistry
 ) -> CostGuardedConverseClient | None:
+    if settings.environment == "production" and (
+        settings.bedrock_enabled or settings.anthropic_enabled
+    ):
+        path = settings.provider_spend_journal_path
+        if path is None or not path.is_file():
+            raise ValueError(
+                "provision or recover deployment spend journal before provider startup"
+            )
     if settings.bedrock_enabled:
         preflight_bedrock_access(
             create_bedrock_control_client(region_name=settings.aws_region),
@@ -40,11 +48,13 @@ def build_provider_client(
                 connect_timeout_seconds=settings.bedrock_connect_timeout_seconds,
                 read_timeout_seconds=settings.bedrock_read_timeout_seconds,
                 total_max_attempts=settings.bedrock_total_max_attempts,
+                max_connections=settings.max_concurrent_agent_runs,
             ),
             guard=BedrockCostGuard(
                 pricing=pricing,
                 spend_limit_usd=settings.bedrock_spend_limit_usd,
                 known_spend_usd=settings.bedrock_known_spend_usd,
+                journal_path=settings.provider_spend_journal_path,
                 request_limit_usd=settings.provider_request_spend_limit_usd,
                 room_limit_usd=settings.provider_room_spend_limit_usd,
                 hourly_limit_usd=settings.provider_hourly_spend_limit_usd,
@@ -86,11 +96,13 @@ def build_provider_client(
                 connect_timeout_seconds=settings.anthropic_connect_timeout_seconds,
                 read_timeout_seconds=settings.anthropic_read_timeout_seconds,
                 total_max_attempts=settings.anthropic_total_max_attempts,
+                max_connections=settings.max_concurrent_agent_runs,
             ),
             guard=BedrockCostGuard(
                 pricing=pricing,
                 spend_limit_usd=settings.anthropic_spend_limit_usd,
                 known_spend_usd=settings.anthropic_known_spend_usd,
+                journal_path=settings.provider_spend_journal_path,
                 request_limit_usd=settings.provider_request_spend_limit_usd,
                 room_limit_usd=settings.provider_room_spend_limit_usd,
                 hourly_limit_usd=settings.provider_hourly_spend_limit_usd,

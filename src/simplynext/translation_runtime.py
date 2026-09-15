@@ -26,8 +26,8 @@ from simplynext.contracts.translated_sign_utterance import (
     WordProducer,
     parse_value,
 )
-from simplynext.rooms.context import ConversationContext
 from simplynext.observability.metrics import MetricsRegistry
+from simplynext.rooms.context import ConversationContext
 
 
 class WordPolicy(StrictValue):

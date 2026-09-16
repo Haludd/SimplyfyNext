@@ -135,19 +135,19 @@ final class RoomSessionController extends ChangeNotifier
     required bool joining,
     String? code,
   }) async {
-    final name = alias.trim();
-    if (name.isEmpty || name.length > 40) {
-      throw const RoomSessionException(
-        'invalid_alias',
-        'Enter a name up to 40 characters.',
-      );
-    }
     _status = joining
         ? RoomConnectionStatus.joining
         : RoomConnectionStatus.creating;
     _error = null;
     notifyListeners();
     try {
+      final name = alias.trim();
+      if (name.isEmpty || name.length > 40) {
+        throw const RoomSessionException(
+          'invalid_alias',
+          'Enter a name up to 40 characters.',
+        );
+      }
       final payload = <String, dynamic>{
         'schema_version': '1.0',
         'event_schema_version': '1.0',

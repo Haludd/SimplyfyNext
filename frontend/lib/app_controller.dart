@@ -122,7 +122,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   bool get hasTranslatedWords => _utteranceWords.isNotEmpty;
   bool get isUtteranceSubmissionConfigured => _utteranceSubmission.isConfigured;
   bool get isUtteranceSubmissionInFlight => _utteranceSubmissionInFlight;
-  bool get hasPendingUtteranceRetry => _pendingUtterance != null;
+  /// A submission whose HTTP acknowledgement has not arrived yet. The payload
+  /// stays stable internally so a later manual send cannot create a duplicate.
+  bool get hasPendingUtteranceSubmission => _pendingUtterance != null;
   bool get canCommitTranslatedUtterance =>
       !_utteranceSubmissionInFlight &&
       (_pendingUtterance != null || _utteranceWords.isNotEmpty);
@@ -507,7 +509,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (selectedLanguage != language) {
       if (_pendingUtterance != null) {
         backendStatus =
-            'Retry the final utterance before switching sign languages';
+            'The current sentence is still being sent. Send it before switching sign languages';
         notifyListeners();
         return;
       }
@@ -764,7 +766,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final word = acceptedResult.word!;
     if (_pendingUtterance != null) {
       backendStatus =
-          'Final utterance is awaiting retry · no new word was added';
+          'The current sentence is still being sent · wait for Send sentence to finish';
       return;
     }
     try {
@@ -972,7 +974,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         return true;
       case PersonalSignShortcut.sendSentence:
         _dismissPendingForNextSign();
-        if (!hasTranslatedWords && !hasPendingUtteranceRetry) {
+        if (!hasTranslatedWords && !hasPendingUtteranceSubmission) {
           backendStatus =
               'Gesture ${match.label} recognised · add a word before sending a sentence';
           notifyListeners();
@@ -1037,9 +1039,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Submits exactly one completed utterance. If its acknowledgement is lost,
-  /// the retained immutable payload is sent again with the same UUID and
-  /// sequence number; a new utterance is never created for that retry.
+  /// Submits exactly one completed utterance. If an acknowledgement is delayed,
+  /// the retained immutable payload is used by the normal Send sentence action
+  /// with the same UUID and sequence number, preventing a duplicate utterance.
   Future<void> commitTranslatedUtterance({
     TranslatedSignUtteranceCompletionReason completionReason =
         TranslatedSignUtteranceCompletionReason.userCommit,
@@ -1086,7 +1088,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } on TranslatedSignUtteranceSubmissionException catch (error) {
       if (_disposed) return;
       backendStatus = error.retryable
-          ? '${error.message} Tap Send sentence to retry the same utterance.'
+          ? '${error.message} The sentence is kept safe; use Send sentence when the room is available.'
           : error.message;
     } on Object catch (error) {
       if (_disposed) return;
@@ -1218,7 +1220,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void clearCaption() {
     if (_pendingUtterance != null) {
       backendStatus =
-          'A final utterance is awaiting retry and cannot be changed';
+          'The current sentence is still being sent and cannot be changed yet';
       notifyListeners();
       return;
     }

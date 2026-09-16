@@ -49,3 +49,23 @@ def test_production_hosts_and_operator_docs_require_explicit_controls() -> None:
 def test_allowed_hosts_parse_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SIMPLYNEXT_ALLOWED_HOSTS", "api.example.com, api.example.com")
     assert Settings(_env_file=None).allowed_hosts == ("api.example.com", "api.example.com")
+
+
+def test_production_requires_vocabulary_enforcement() -> None:
+    with pytest.raises(ValidationError, match="vocabulary enforcement"):
+        Settings(
+            _env_file=None,
+            environment="production",
+            allowed_hosts=("example.com",),
+            word_policy_enforce_vocabulary=False,
+        )
+
+
+def test_production_requires_score_enforcement() -> None:
+    with pytest.raises(ValidationError, match="score enforcement"):
+        Settings(
+            _env_file=None,
+            environment="production",
+            allowed_hosts=("example.com",),
+            word_policy_enforce_scores=False,
+        )

@@ -189,11 +189,12 @@ def create_app(
             )
 
     logger.info(
-        "startup_configuration environment=%s bedrock_enabled=%s anthropic_enabled=%s "
+        "startup_configuration environment=%s bedrock_enabled=%s anthropic_enabled=%s gemini_enabled=%s "
         "port=%s room_max_active=%s max_concurrent_agent_runs=%s workers=1",
         runtime_settings.environment,
         runtime_settings.bedrock_enabled,
         runtime_settings.anthropic_enabled,
+        runtime_settings.gemini_enabled,
         runtime_settings.port,
         runtime_settings.room_max_active,
         runtime_settings.max_concurrent_agent_runs,

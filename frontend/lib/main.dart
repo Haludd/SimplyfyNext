@@ -1827,15 +1827,12 @@ class _TranslatedUtteranceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final words = controller.translatedWords;
     final wordCount = controller.translatedWordCount;
-    final retry = controller.hasPendingUtteranceRetry;
     final sending = controller.isUtteranceSubmissionInFlight;
     final roomConfigured = controller.isUtteranceSubmissionConfigured;
     final pendingWords = controller.pendingTranslatedWords;
     final pendingConfidence = controller.pendingTranslatedWordConfidence;
     final actionLabel = sending
         ? 'Submitting…'
-        : retry
-        ? 'Retry final utterance'
         : wordCount == 0
         ? 'Send sentence'
         : 'Send sentence ($wordCount word${wordCount == 1 ? '' : 's'})';
@@ -1861,26 +1858,26 @@ class _TranslatedUtteranceCard extends StatelessWidget {
               ),
               const Spacer(),
               _StatusPill(
-                label: retry
-                    ? 'RETRY READY'
+                label: sending
+                    ? 'SENDING'
                     : roomConfigured
                     ? 'LOCAL BUFFER'
                     : 'ROOM OFFLINE',
-                color: retry || !roomConfigured ? _yellow : _mint,
+                color: !roomConfigured ? _yellow : _mint,
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            retry
-                ? 'The final packet is retained unchanged until its acknowledgement arrives.'
+            sending
+                ? 'Your complete sentence is being sent to the backend.'
                 : roomConfigured
                 ? 'Each pause finishes one sign. Review the accumulated words, then send the complete sentence when you are ready.'
                 : 'Recognised words stay on this device. Configure a room before it can send the completed utterance.',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.4),
           ),
           const SizedBox(height: 12),
-          if (pendingWords.isNotEmpty && !retry) ...<Widget>[
+          if (pendingWords.isNotEmpty) ...<Widget>[
             Container(
               key: const ValueKey<String>('pending-translated-words-review'),
               width: double.infinity,
@@ -2035,7 +2032,7 @@ class _TranslatedUtteranceCard extends StatelessWidget {
                   onPressed: controller.canCommitTranslatedUtterance && !sending
                       ? controller.commitTranslatedUtterance
                       : null,
-                  icon: Icon(retry ? Icons.replay : Icons.send_outlined),
+                  icon: const Icon(Icons.send_outlined),
                   label: Text(actionLabel),
                   style: FilledButton.styleFrom(
                     backgroundColor: _mint,
@@ -2067,7 +2064,7 @@ class _TranslatedUtteranceCard extends StatelessWidget {
                 ),
             ],
           ),
-          if (!roomConfigured && !retry) ...<Widget>[
+          if (!roomConfigured) ...<Widget>[
             const SizedBox(height: 9),
             const Text(
               'Start a signing room before sending recognized words.',

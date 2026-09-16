@@ -157,6 +157,38 @@ async def test_hosted_stages_are_independent_and_context_is_narrowed():
     assert set(c) == {"reference_context", "current_evidence", "draft"}
 
 
+def test_assembler_normalizes_terminal_punctuation_in_an_identical_alignment():
+    draft = dict(ENTRIES[0]["draft"])
+    draft["alignment"] = [dict(span) for span in draft["alignment"]]
+    draft["alignment"][-1]["text"] = draft["alignment"][-1]["text"].rstrip(".?!")
+    provider = WordProvider(FakeConverse(response(draft)), "mock-word-model")
+
+    result = provider.request(
+        "assembler",
+        {"reference_context": {}, "current_evidence": {}},
+        WordDraft,
+        "test-utterance",
+    )
+
+    assert result.candidate_text == ENTRIES[0]["draft"]["candidate_text"]
+    assert " ".join(span.text for span in result.alignment) == result.candidate_text
+
+
+def test_assembler_does_not_normalize_a_changed_alignment_word():
+    draft = dict(ENTRIES[0]["draft"])
+    draft["alignment"] = [dict(span) for span in draft["alignment"]]
+    draft["alignment"][-1]["text"] = "coffee."
+    provider = WordProvider(FakeConverse(response(draft)), "mock-word-model")
+
+    with pytest.raises(ValueError, match="changes an aligned word"):
+        provider.request(
+            "assembler",
+            {"reference_context": {}, "current_evidence": {}},
+            WordDraft,
+            "test-utterance",
+        )
+
+
 @pytest.mark.parametrize("success", [True, False])
 async def test_only_one_revision_and_final_criticism(success):
     fake = FakeConverse(

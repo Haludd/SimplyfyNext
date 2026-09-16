@@ -565,6 +565,12 @@ final class RoomSessionController extends ChangeNotifier
     _messages[message.key] = message;
     _contextVersion = max(_contextVersion, message.contextVersion);
     final ownId = _credentials?.participantId;
+    if (message.senderId == ownId && _matchesPendingRequest(message)) {
+      // A websocket event can arrive even when the HTTP acknowledgement was
+      // lost. It proves the backend received the exact packet, so clear the
+      // transport hold instead of leaving the signer in a stale send state.
+      _completePending(message.clientSequence);
+    }
     if (message.senderId == ownId &&
         message.clientSequence >= _nextClientSequence) {
       _nextClientSequence = message.clientSequence + 1;
@@ -579,6 +585,14 @@ final class RoomSessionController extends ChangeNotifier
       final text = message.ttsText ?? message.text;
       if (text != null) unawaited(onIncomingSignedText?.call(text));
     }
+  }
+
+  bool _matchesPendingRequest(RoomMessage message) {
+    final pending = _pendingRequest;
+    final body = pending?['body'];
+    if (body is! Map) return false;
+    return body['message_id'] == message.messageId &&
+        body['client_sequence'] == message.clientSequence;
   }
 
   void _onSocketError(Object failure) {

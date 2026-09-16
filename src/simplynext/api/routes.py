@@ -48,7 +48,11 @@ async def readiness(request: Request, response: Response) -> dict[str, object]:
                     services.settings.environment != "production"
                     or services.settings.word_evaluation_path is not None
                 )
-                and (services.settings.anthropic_enabled or services.settings.bedrock_enabled)
+                and (
+                    services.settings.anthropic_enabled
+                    or services.settings.bedrock_enabled
+                    or services.settings.gemini_enabled
+                )
             ),
             "utterance_schema_version": "1.0",
             "event_schema_version": "1.0",
@@ -60,6 +64,8 @@ async def readiness(request: Request, response: Response) -> dict[str, object]:
                 if services.settings.anthropic_enabled
                 else "bedrock"
                 if services.settings.bedrock_enabled
+                else "gemini"
+                if services.settings.gemini_enabled
                 else "deterministic"
             ),
         },

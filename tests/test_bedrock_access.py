@@ -346,3 +346,45 @@ def test_anthropic_settings_require_owner_and_verified_pricing() -> None:
             anthropic_cache_write_usd_per_million_tokens=Decimal("1.25"),
             anthropic_cache_read_usd_per_million_tokens=Decimal("0.10"),
         )
+
+
+def test_gemini_settings_require_owner_and_verified_pricing() -> None:
+    with pytest.raises(ValidationError, match="gemini_lease_owner"):
+        Settings(
+            _env_file=None,
+            gemini_enabled=True,
+            gemini_input_usd_per_million_tokens=Decimal("0.30"),
+            gemini_output_usd_per_million_tokens=Decimal("2.50"),
+            gemini_cache_write_usd_per_million_tokens=Decimal("0.00"),
+            gemini_cache_read_usd_per_million_tokens=Decimal("0.03"),
+        )
+    with pytest.raises(ValidationError, match="all four gemini pricing"):
+        Settings(_env_file=None, gemini_enabled=True, gemini_lease_owner="team-owner")
+
+    configured = Settings(
+        _env_file=None,
+        gemini_enabled=True,
+        gemini_lease_owner="team-owner",
+        gemini_input_usd_per_million_tokens=Decimal("0.30"),
+        gemini_output_usd_per_million_tokens=Decimal("2.50"),
+        gemini_cache_write_usd_per_million_tokens=Decimal("0.00"),
+        gemini_cache_read_usd_per_million_tokens=Decimal("0.03"),
+    )
+    assert configured.gemini_model_id == "gemini-3.1-flash-lite"
+
+    with pytest.raises(ValidationError, match="only one hosted model"):
+        Settings(
+            _env_file=None,
+            gemini_enabled=True,
+            gemini_lease_owner="gemini-owner",
+            gemini_input_usd_per_million_tokens=Decimal("0.30"),
+            gemini_output_usd_per_million_tokens=Decimal("2.50"),
+            gemini_cache_write_usd_per_million_tokens=Decimal("0.00"),
+            gemini_cache_read_usd_per_million_tokens=Decimal("0.03"),
+            anthropic_enabled=True,
+            anthropic_lease_owner="anthropic-owner",
+            anthropic_input_usd_per_million_tokens=Decimal("1.00"),
+            anthropic_output_usd_per_million_tokens=Decimal("5.00"),
+            anthropic_cache_write_usd_per_million_tokens=Decimal("1.25"),
+            anthropic_cache_read_usd_per_million_tokens=Decimal("0.10"),
+        )

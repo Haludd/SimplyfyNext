@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "templates": [
+    {
+      "words": [
+        "WATER",
+        "I",
+        "WANT"
+      ],
+      "draft": {
+        "schema_version": "1.0",
+        "candidate_text": "I want water.",
+        "tts_text": "I want water.",
+        "alignment": [
+          {
+            "text": "I",
+            "input_indices": [
+              1
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "want",
+            "input_indices": [
+              2
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "water.",
+            "input_indices": [
+              0
+            ],
+            "transformation": "lexical"
+          }
+        ],
+        "unresolved_indices": []
+      }
+    },
+    {
+      "words": [
+        "I",
+        "WANT",
+        "WATER"
+      ],
+      "draft": {
+        "schema_version": "1.0",
+        "candidate_text": "I want water.",
+        "tts_text": "I want water.",
+        "alignment": [
+          {
+            "text": "I",
+            "input_indices": [
+              0
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "want",
+            "input_indices": [
+              1
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "water.",
+            "input_indices": [
+              2
+            ],
+            "transformation": "lexical"
+          }
+        ],
+        "unresolved_indices": []
+      }
+    },
+    {
+      "words": [
+        "I",
+        "CLEAN",
+        "TABLE"
+      ],
+      "draft": {
+        "schema_version": "1.0",
+        "candidate_text": "I clean the table.",
+        "tts_text": "I clean the table.",
+        "alignment": [
+          {
+            "text": "I",
+            "input_indices": [
+              0
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "clean",
+            "input_indices": [
+              1
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "the",
+            "input_indices": [],
+            "transformation": "article"
+          },
+          {
+            "text": "table.",
+            "input_indices": [
+              2
+            ],
+            "transformation": "lexical"
+          }
+        ],
+        "unresolved_indices": []
+      }
+    },
+    {
+      "words": [
+        "PLEASE",
+        "HELP"
+      ],
+      "draft": {
+        "schema_version": "1.0",
+        "candidate_text": "Please help.",
+        "tts_text": "Please help.",
+        "alignment": [
+          {
+            "text": "Please",
+            "input_indices": [
+              0
+            ],
+            "transformation": "lexical"
+          },
+          {
+            "text": "help.",
+            "input_indices": [
+              1
+            ],
+            "transformation": "lexical"
+          }
+        ],
+        "unresolved_indices": []
+      }
+    },
+    {
+      "words": [
+        "HELLO"
+      ],
+      "draft": {
+        "schema_version": "1.0",
+        "candidate_text": "Hello.",
+        "tts_text": "Hello.",
+        "alignment": [
+          {
+            "text": "Hello.",
+            "input_indices": [
+              0
+            ],
+            "transformation": "lexical"
+          }
+        ],
+        "unresolved_indices": []
+      }
+    }
+  ]
+}

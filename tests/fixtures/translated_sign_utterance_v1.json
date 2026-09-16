@@ -1,0 +1,56 @@
+{
+  "type": "translated_sign_utterance",
+  "schema_version": "1.0",
+  "message_id": "1f205ca5-6eb6-42f1-a490-811f612fbb98",
+  "client_sequence": 0,
+  "source_language": "asl",
+  "target_language": "en",
+  "is_final": true,
+  "completion_reason": "user_commit",
+  "producer": {
+    "recognizer_id": "signchat_asl_signs_onnx",
+    "recognizer_version": "signchat_asl_signs_onnx",
+    "translator_id": "asl_label_to_english",
+    "translator_version": "1.0.0",
+    "vocabulary_version": "popsign_250_en_v1",
+    "confidence_kind": "normalized_model_score"
+  },
+  "words": [
+    {
+      "index": 0,
+      "token_id": "word-0",
+      "word": "TABLE",
+      "confidence": 0.6780357956886292,
+      "alternatives": [
+        {
+          "rank": 2,
+          "word": "CLEAN",
+          "confidence": 0.06273823976516724
+        },
+        {
+          "rank": 3,
+          "word": "ON",
+          "confidence": 0.0337180569767952
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "token_id": "word-1",
+      "word": "TABLE",
+      "confidence": 0.6013476848602295,
+      "alternatives": [
+        {
+          "rank": 2,
+          "word": "CLEAN",
+          "confidence": 0.15389969944953918
+        },
+        {
+          "rank": 3,
+          "word": "ON",
+          "confidence": 0.04783957079052925
+        }
+      ]
+    }
+  ]
+}

@@ -1,44 +1,56 @@
-# ─── PYTHON ─────────────────────────────────────────────────────────────────
+# Python build and cache artifacts
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
+build/
+dist/
+/.venv*/
 venv/
 env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/
+release-evidence*.json
+release-evidence*.scan.txt
+release-test-results*.txt
 
-# ─── SECRETS — see CLD_S4 constraint 3 and CLD_S6 rule 2 ────────────────────
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
+/plan/BPP_backend_production_plan.md
 *.pem
 *.key
 credentials.json
 aws_credentials
 
-# ─── MODEL WEIGHTS AND DATA — see CLD_S6 rule 5, 5 GB submission limit ──────
+# Model weights and non-versioned datasets
 *.tflite
 *.task
 *.blob
 *.caffemodel
 *.onnx
+!frontend/web/models/asl-signs/asl-signs.onnx
 *.pt
 *.pth
 *.h5
 data/raw/
 data/interim/
 
-# ─── RECORDED MEDIA — see RSK_S8.3, consent required before committing ──────
+# Recorded media
 *.mp4
 *.mov
 *.avi
 *.mkv
 
-# ─── EDITOR AND OS ──────────────────────────────────────────────────────────
+# Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local verification output
+/.flutter-verify-*/
+/test-results/

@@ -1,0 +1,304 @@
+{
+  "kind": "accelerated_synthetic_no_network",
+  "provider_usage": "simulated",
+  "latency_scope": "local execution only; excludes network and mobile delivery",
+  "runs": [
+    {
+      "turns": 60,
+      "signed_utterances": 30,
+      "simulated_seconds": 3600,
+      "model_calls": 60,
+      "simulated_cost_usd": "0.14250000",
+      "metrics": {
+        "counters": {
+          "bedrock_estimated_cost_nano_usd": 142500000,
+          "bedrock_input_tokens": 105000,
+          "bedrock_model_calls_succeeded": 60,
+          "bedrock_model_calls_total": 60,
+          "bedrock_output_tokens": 7500,
+          "context_compactions": 5,
+          "room_admission_accepted": 60,
+          "room_admission_cached": 30,
+          "room_terminal_accepted": 30
+        },
+        "timings": {
+          "provider_queue": {
+            "count": 60,
+            "mean_ms": 0.0004839637161542972,
+            "minimum_ms": 0.0002919696271419525,
+            "maximum_ms": 0.0015829573385417461,
+            "p50_ms": 0.00045797787606716156,
+            "p95_ms": 0.0007500057108700275,
+            "sample_count": 60
+          },
+          "room_admission": {
+            "count": 90,
+            "mean_ms": 0.023404177692201402,
+            "minimum_ms": 0.013666984159499407,
+            "maximum_ms": 0.10008295066654682,
+            "p50_ms": 0.02016598591580987,
+            "p95_ms": 0.03912503598257899,
+            "sample_count": 90
+          },
+          "room_commit": {
+            "count": 30,
+            "mean_ms": 0.013413868146017194,
+            "minimum_ms": 0.010083022061735392,
+            "maximum_ms": 0.03566598752513528,
+            "p50_ms": 0.0118750031106174,
+            "p95_ms": 0.020332983694970608,
+            "sample_count": 30
+          },
+          "room_queue": {
+            "count": 30,
+            "mean_ms": 0.044374969244624175,
+            "minimum_ms": 0.031000003218650818,
+            "maximum_ms": 0.05958304973319173,
+            "p50_ms": 0.04299997817724943,
+            "p95_ms": 0.05083403084427118,
+            "sample_count": 30
+          },
+          "room_terminal": {
+            "count": 30,
+            "mean_ms": 6.82164310128428,
+            "minimum_ms": 0.3822909784503281,
+            "maximum_ms": 191.96987501345575,
+            "p50_ms": 0.4342499887570739,
+            "p95_ms": 0.5772080039605498,
+            "sample_count": 30
+          },
+          "word_assembler": {
+            "count": 30,
+            "mean_ms": 6.427199991109471,
+            "minimum_ms": 0.08083402644842863,
+            "maximum_ms": 190.03695802530274,
+            "p50_ms": 0.09024998871609569,
+            "p95_ms": 0.13870798284187913,
+            "sample_count": 30
+          },
+          "word_critic": {
+            "count": 30,
+            "mean_ms": 0.08631939999759197,
+            "minimum_ms": 0.0647500273771584,
+            "maximum_ms": 0.4135000053793192,
+            "p50_ms": 0.07341703167185187,
+            "p95_ms": 0.11149997590109706,
+            "sample_count": 30
+          }
+        },
+        "values": {
+          "context_assembler_token_bound": {
+            "count": 30,
+            "mean": 2194.8333333333335,
+            "minimum": 303,
+            "maximum": 3647
+          },
+          "context_critic_token_bound": {
+            "count": 30,
+            "mean": 1018.0666666666667,
+            "minimum": 240,
+            "maximum": 1577
+          }
+        }
+      }
+    },
+    {
+      "turns": 120,
+      "signed_utterances": 60,
+      "simulated_seconds": 3600,
+      "model_calls": 120,
+      "simulated_cost_usd": "0.28500000",
+      "metrics": {
+        "counters": {
+          "bedrock_estimated_cost_nano_usd": 285000000,
+          "bedrock_input_tokens": 210000,
+          "bedrock_model_calls_succeeded": 120,
+          "bedrock_model_calls_total": 120,
+          "bedrock_output_tokens": 15000,
+          "context_compactions": 11,
+          "room_admission_accepted": 120,
+          "room_admission_cached": 60,
+          "room_terminal_accepted": 60
+        },
+        "timings": {
+          "provider_queue": {
+            "count": 120,
+            "mean_ms": 0.0004239889676682651,
+            "minimum_ms": 0.0002500019036233425,
+            "maximum_ms": 0.0007080379873514175,
+            "p50_ms": 0.0004169996827840805,
+            "p95_ms": 0.0005420297384262085,
+            "sample_count": 120
+          },
+          "room_admission": {
+            "count": 180,
+            "mean_ms": 0.020233973110508587,
+            "minimum_ms": 0.013458018656820059,
+            "maximum_ms": 0.0730830361135304,
+            "p50_ms": 0.018874998204410076,
+            "p95_ms": 0.026958005037158728,
+            "sample_count": 180
+          },
+          "room_commit": {
+            "count": 60,
+            "mean_ms": 0.012877854169346392,
+            "minimum_ms": 0.009624985978007317,
+            "maximum_ms": 0.025416025891900063,
+            "p50_ms": 0.012582982890307903,
+            "p95_ms": 0.01712498487904668,
+            "sample_count": 60
+          },
+          "room_queue": {
+            "count": 60,
+            "mean_ms": 0.04561526487426212,
+            "minimum_ms": 0.02616702113300562,
+            "maximum_ms": 0.061415950767695904,
+            "p50_ms": 0.046083005145192146,
+            "p95_ms": 0.05712499842047691,
+            "sample_count": 60
+          },
+          "room_terminal": {
+            "count": 60,
+            "mean_ms": 0.424717299756594,
+            "minimum_ms": 0.3536249860189855,
+            "maximum_ms": 0.5772089934907854,
+            "p50_ms": 0.41266699554398656,
+            "p95_ms": 0.525540963280946,
+            "sample_count": 60
+          },
+          "word_assembler": {
+            "count": 60,
+            "mean_ms": 0.09336876779949914,
+            "minimum_ms": 0.06916699931025505,
+            "maximum_ms": 0.1692089717835188,
+            "p50_ms": 0.09129097452387214,
+            "p95_ms": 0.11462497059255838,
+            "sample_count": 60
+          },
+          "word_critic": {
+            "count": 60,
+            "mean_ms": 0.07379158341791481,
+            "minimum_ms": 0.057541008573025465,
+            "maximum_ms": 0.11100003030151129,
+            "p50_ms": 0.07212499622255564,
+            "p95_ms": 0.09391701314598322,
+            "sample_count": 60
+          }
+        },
+        "values": {
+          "context_assembler_token_bound": {
+            "count": 60,
+            "mean": 3288.9,
+            "minimum": 303,
+            "maximum": 5265
+          },
+          "context_critic_token_bound": {
+            "count": 60,
+            "mean": 1288.2666666666667,
+            "minimum": 240,
+            "maximum": 1582
+          }
+        }
+      }
+    },
+    {
+      "turns": 240,
+      "signed_utterances": 120,
+      "simulated_seconds": 3600,
+      "model_calls": 240,
+      "simulated_cost_usd": "0.57000000",
+      "metrics": {
+        "counters": {
+          "bedrock_estimated_cost_nano_usd": 570000000,
+          "bedrock_input_tokens": 420000,
+          "bedrock_model_calls_succeeded": 240,
+          "bedrock_model_calls_total": 240,
+          "bedrock_output_tokens": 30000,
+          "context_compactions": 23,
+          "room_admission_accepted": 240,
+          "room_admission_cached": 120,
+          "room_terminal_accepted": 120
+        },
+        "timings": {
+          "provider_queue": {
+            "count": 240,
+            "mean_ms": 0.00043057686222406727,
+            "minimum_ms": 0.0002500019036233425,
+            "maximum_ms": 0.0007500057108700275,
+            "p50_ms": 0.0004169996827840805,
+            "p95_ms": 0.0005830079317092896,
+            "sample_count": 240
+          },
+          "room_admission": {
+            "count": 360,
+            "mean_ms": 0.02233568165037367,
+            "minimum_ms": 0.013042008504271507,
+            "maximum_ms": 0.0723340199328959,
+            "p50_ms": 0.02179096918553114,
+            "p95_ms": 0.03266701241955161,
+            "sample_count": 360
+          },
+          "room_commit": {
+            "count": 120,
+            "mean_ms": 0.015164237023176005,
+            "minimum_ms": 0.00925001222640276,
+            "maximum_ms": 0.02762500662356615,
+            "p50_ms": 0.015125027857720852,
+            "p95_ms": 0.019625003915280104,
+            "sample_count": 120
+          },
+          "room_queue": {
+            "count": 120,
+            "mean_ms": 0.050046160079849265,
+            "minimum_ms": 0.023332948330789804,
+            "maximum_ms": 0.23979099933058023,
+            "p50_ms": 0.048332964070141315,
+            "p95_ms": 0.06262498209252954,
+            "sample_count": 120
+          },
+          "room_terminal": {
+            "count": 120,
+            "mean_ms": 0.43111254102162394,
+            "minimum_ms": 0.34841703018173575,
+            "maximum_ms": 0.6407909677363932,
+            "p50_ms": 0.42587495408952236,
+            "p95_ms": 0.49033400136977434,
+            "sample_count": 120
+          },
+          "word_assembler": {
+            "count": 120,
+            "mean_ms": 0.0937003477398927,
+            "minimum_ms": 0.06087496876716614,
+            "maximum_ms": 0.13108295388519764,
+            "p50_ms": 0.0933330156840384,
+            "p95_ms": 0.11008302681148052,
+            "sample_count": 120
+          },
+          "word_critic": {
+            "count": 120,
+            "mean_ms": 0.07244165026349947,
+            "minimum_ms": 0.05820801015943289,
+            "maximum_ms": 0.0987909734249115,
+            "p50_ms": 0.07141596870496869,
+            "p95_ms": 0.08304201764985919,
+            "sample_count": 120
+          }
+        },
+        "values": {
+          "context_assembler_token_bound": {
+            "count": 120,
+            "mean": 4067.45,
+            "minimum": 303,
+            "maximum": 5273
+          },
+          "context_critic_token_bound": {
+            "count": 120,
+            "mean": 1425.175,
+            "minimum": 240,
+            "maximum": 1583
+          }
+        }
+      }
+    }
+  ]
+}

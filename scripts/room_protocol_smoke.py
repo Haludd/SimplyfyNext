@@ -20,6 +20,7 @@ async def run_smoke(
     base_url: str,
     *,
     templates: bool = False,
+    hosted_acceptance: bool = False,
     origin: str | None = None,
     production: bool = False,
 ) -> dict[str, object]:
@@ -27,7 +28,9 @@ async def run_smoke(
     parsed = urlsplit(base_url)
     if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
         raise ValueError("base URL must contain only scheme and host")
-    if production and (parsed.scheme != "https" or templates):
+    if templates and hosted_acceptance:
+        raise ValueError("choose either template or hosted acceptance mode")
+    if production and (parsed.scheme != "https" or templates or hosted_acceptance):
         raise ValueError("production smoke requires HTTPS and safe repair mode")
     ws_base = base_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
     ws_origin = None if origin is None else Origin(origin)
@@ -43,6 +46,12 @@ async def run_smoke(
             readiness = (await client.get(base_url + "/readyz")).json()
             if readiness["rooms"]["word_provider"] != "templates":
                 raise RuntimeError("template smoke refuses a hosted provider")
+        if hosted_acceptance:
+            readiness = (await client.get(base_url + "/readyz")).json()
+            if readiness["rooms"]["word_provider"] not in {"bedrock", "anthropic", "gemini"}:
+                raise RuntimeError("hosted acceptance smoke requires a hosted provider")
+            if not readiness["rooms"]["sentence_acceptance_ready"]:
+                raise RuntimeError("hosted sentence acceptance is not ready")
         response = await client.post(
             base_url + "/v1/rooms",
             json={
@@ -97,14 +106,16 @@ async def run_smoke(
                     ).read_text()
                 )
                 payload["message_id"] = str(uuid4())
+                smoke_words = ["WHERE", "WATER"] if hosted_acceptance else ["HELLO"]
                 payload["words"] = [
                     dict(
-                        index=0,
-                        token_id="w0",
-                        word="HELLO",
-                        confidence=0.9 if templates else 0.0,
+                        index=index,
+                        token_id=f"w{index}",
+                        word=word,
+                        confidence=0.9 if templates or hosted_acceptance else 0.0,
                         alternatives=[],
                     )
+                    for index, word in enumerate(smoke_words)
                 ]
                 started = perf_counter()
                 response = await client.post(
@@ -125,7 +136,12 @@ async def run_smoke(
 
                 one, two = await asyncio.gather(terminal(first), terminal(second))
                 delivery_ms = (perf_counter() - started) * 1000
-                assert one == two and one["status"] == ("accepted" if templates else "repair")
+                expected_status = "accepted" if templates or hosted_acceptance else "repair"
+                assert one == two and one["status"] == expected_status
+                if hosted_acceptance:
+                    assert one["source"] == "sign"
+                    assert one["text"]
+                    assert one["translation"]["tts_text"] == one["text"]
                 response = await client.post(
                     room_url + "/messages",
                     headers=hearing_headers,
@@ -163,7 +179,13 @@ async def run_smoke(
             await client.delete(room_url, headers=signer_headers)
     result: dict[str, object] = {
         "status": "passed",
-        "mode": "template" if templates else "no_spend_repair",
+        "mode": (
+            "hosted_acceptance"
+            if hosted_acceptance
+            else "template"
+            if templates
+            else "no_spend_repair"
+        ),
         "participants": 2,
         "physical_devices_tested": False,
         "admission_ms": admission_ms,
@@ -177,7 +199,9 @@ async def run_smoke(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--templates", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--templates", action="store_true")
+    mode.add_argument("--hosted-acceptance", action="store_true")
     parser.add_argument("--origin")
     parser.add_argument("--production", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -187,6 +211,7 @@ def main() -> None:
             run_smoke(
                 args.base_url,
                 templates=args.templates,
+                hosted_acceptance=args.hosted_acceptance,
                 origin=args.origin,
                 production=args.production,
             )

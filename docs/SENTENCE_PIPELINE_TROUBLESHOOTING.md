@@ -104,6 +104,28 @@ SIMPLYNEXT_GEMINI_CACHE_READ_USD_PER_MILLION_TOKENS=0
 SIMPLYNEXT_WORD_POLICY_PATH=data/word_policy.json
 ```
 
+For a fresh local setup, the same non-secret settings are available as a copyable profile:
+
+```bash
+install -m 600 deploy/gemini.development.env.example .env
+# Edit .env and add: GEMINI_API_KEY=YOUR_KEY
+source .venv-integration/bin/activate
+python main.py
+```
+
+In another terminal, verify readiness and exercise the real two-participant return path. The hosted
+acceptance smoke submits the policy-valid words `WHERE`, `WATER`, requires an accepted sentence,
+requires identical delivery to both WebSocket clients, and verifies that TTS text matches the
+displayed text. It deliberately refuses production mode.
+
+```bash
+curl http://127.0.0.1:8000/readyz
+source .venv-integration/bin/activate
+python scripts/room_protocol_smoke.py \
+  --base-url http://127.0.0.1:8000 \
+  --hosted-acceptance
+```
+
 Keep the API key in the backend only. The free tier has project/model quotas and Google states that
 free-tier inputs and outputs may be used to improve its products. Recheck pricing and terms before
 testing in the official [pricing](https://ai.google.dev/gemini-api/docs/pricing) and

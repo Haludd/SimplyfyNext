@@ -7,6 +7,7 @@ import os
 os.environ["SIMPLYNEXT_BEDROCK_ENABLED"] = "false"
 os.environ["SIMPLYNEXT_ENVIRONMENT"] = "test"
 os.environ["SIMPLYNEXT_ANTHROPIC_ENABLED"] = "false"
+os.environ["SIMPLYNEXT_GEMINI_ENABLED"] = "false"
 os.environ["SIMPLYNEXT_RECOGNITION_LANGUAGE"] = "asl"
 os.environ["SIMPLYNEXT_WORD_POLICY_PATH"] = ""
 os.environ["SIMPLYNEXT_WORD_TEMPLATES_PATH"] = ""

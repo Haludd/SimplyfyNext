@@ -68,6 +68,7 @@ RUN groupadd --system --gid 10001 simplynext \
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=simplynext:simplynext data/word_templates.example.json /app/data/word_templates.example.json
+COPY --chown=simplynext:simplynext data/word_policy.json /app/data/word_policy.json
 COPY scripts/production_preflight.py /app/ops/production_preflight.py
 COPY --chmod=755 docker/entrypoint.sh /app/ops/entrypoint.sh
 

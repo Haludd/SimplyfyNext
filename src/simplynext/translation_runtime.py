@@ -45,17 +45,23 @@ class WordPolicy(StrictValue):
             raise ValueError("duplicate vocabulary word")
         return self
 
-    def check(self, utterance: TranslatedSignUtteranceV1) -> RepairOutcome | None:
+    def check(
+        self,
+        utterance: TranslatedSignUtteranceV1,
+        *,
+        enforce_vocabulary: bool = True,
+        enforce_scores: bool = True,
+    ) -> RepairOutcome | None:
         if utterance.producer != self.producer:
             return repair("policy_unconfigured")
         for word in utterance.words:
-            if any(
+            if enforce_vocabulary and any(
                 w not in self.vocabulary for w in (word.word, *(a.word for a in word.alternatives))
             ):
                 return repair("unsupported_vocabulary", (word.index,))
-            if word.confidence <= 0 or word.confidence < self.min_score:
+            if enforce_scores and (word.confidence <= 0 or word.confidence < self.min_score):
                 return repair("low_score", (word.index,))
-            if word.alternatives and (
+            if enforce_scores and word.alternatives and (
                 word.confidence <= word.alternatives[0].confidence
                 or word.confidence - word.alternatives[0].confidence < self.min_margin
             ):
@@ -80,9 +86,18 @@ class WordTemplates(StrictValue):
 
 
 class WordTranslationEngine:
-    def __init__(self, graph: WordGraph, policy: WordPolicy | None) -> None:
+    def __init__(
+        self,
+        graph: WordGraph,
+        policy: WordPolicy | None,
+        *,
+        enforce_vocabulary: bool = True,
+        enforce_scores: bool = True,
+    ) -> None:
         self.graph = graph
         self.policy = policy
+        self.enforce_vocabulary = enforce_vocabulary
+        self.enforce_scores = enforce_scores
 
     async def process(
         self,
@@ -91,7 +106,11 @@ class WordTranslationEngine:
     ) -> TerminalOutcome:
         if self.policy is None:
             return repair("policy_unconfigured")
-        decision = self.policy.check(utterance)
+        decision = self.policy.check(
+            utterance,
+            enforce_vocabulary=self.enforce_vocabulary,
+            enforce_scores=self.enforce_scores,
+        )
         if decision is not None:
             return decision
         return await self.graph.run(utterance, context, policy_version=self.policy.evaluation_id)
@@ -115,9 +134,7 @@ def load_word_policy(settings: Settings) -> WordPolicy | None:
         report = parse_value(
             EvaluationReport, settings.word_evaluation_path.read_bytes(), max_bytes=65536
         )
-        model_id = (
-            settings.anthropic_model_id if settings.anthropic_enabled else settings.bedrock_model_id
-        )
+        model_id = _hosted_model_id(settings)
         if (
             not report.qualifies()
             or report.evaluation_id != policy.evaluation_id
@@ -127,7 +144,11 @@ def load_word_policy(settings: Settings) -> WordPolicy | None:
             or report.context_assembler_token_budget != settings.context_assembler_token_budget
             or report.context_critic_token_budget != settings.context_critic_token_budget
             or report.max_revisions != settings.agent_max_revisions
-            or not (settings.anthropic_enabled or settings.bedrock_enabled)
+            or not (
+                settings.anthropic_enabled
+                or settings.bedrock_enabled
+                or settings.gemini_enabled
+            )
         ):
             raise ValueError("production evaluation does not qualify this producer/pipeline/model")
     return policy
@@ -139,12 +160,10 @@ def build_word_translation_engine(
     metrics: MetricsRegistry | None = None,
 ) -> WordTranslationEngine:
     policy = load_word_policy(settings)
-    if settings.bedrock_enabled or settings.anthropic_enabled:
+    if settings.bedrock_enabled or settings.anthropic_enabled or settings.gemini_enabled:
         if client is None:
             raise ValueError("hosted word translation requires the shared cost-guarded client")
-        model_id = (
-            settings.anthropic_model_id if settings.anthropic_enabled else settings.bedrock_model_id
-        )
+        model_id = _hosted_model_id(settings)
         provider = WordProvider(client, model_id)
         graph = WordGraph(
             ProviderWordAssembler(provider),
@@ -164,7 +183,12 @@ def build_word_translation_engine(
             max_concurrent_calls=settings.max_concurrent_agent_runs,
             metrics=metrics,
         )
-    return WordTranslationEngine(graph, policy)
+    return WordTranslationEngine(
+        graph,
+        policy,
+        enforce_vocabulary=settings.word_policy_enforce_vocabulary,
+        enforce_scores=settings.word_policy_enforce_scores,
+    )
 
 
 def load_word_templates(path: Path | None) -> dict[tuple[str, ...], WordDraft]:
@@ -172,3 +196,11 @@ def load_word_templates(path: Path | None) -> dict[tuple[str, ...], WordDraft]:
         return {}
     document = parse_value(WordTemplates, path.read_bytes(), max_bytes=2_000_000)
     return {entry.words: entry.draft for entry in document.templates}
+
+
+def _hosted_model_id(settings: Settings) -> str:
+    if settings.anthropic_enabled:
+        return settings.anthropic_model_id
+    if settings.gemini_enabled:
+        return settings.gemini_model_id
+    return settings.bedrock_model_id

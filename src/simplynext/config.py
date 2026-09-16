@@ -18,6 +18,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_BEDROCK_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 DEFAULT_ANTHROPIC_MODEL_ID = "claude-haiku-4-5-20251001"
 DEFAULT_ANTHROPIC_API_BASE_URL = "https://api.anthropic.com"
+DEFAULT_GEMINI_MODEL_ID = "gemini-3.1-flash-lite"
+DEFAULT_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
 class Settings(BaseSettings):
@@ -97,6 +99,23 @@ class Settings(BaseSettings):
     anthropic_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
     anthropic_read_timeout_seconds: float = Field(default=60.0, gt=0.0, le=300.0)
     anthropic_total_max_attempts: int = Field(default=1, ge=1, le=10)
+
+    # Direct Gemini mode is an optional diagnostic/alternative provider. The
+    # adapter reads GEMINI_API_KEY server-side and never exposes it to Flutter.
+    gemini_enabled: bool = False
+    gemini_model_id: str = DEFAULT_GEMINI_MODEL_ID
+    gemini_api_base_url: str = DEFAULT_GEMINI_API_BASE_URL
+    gemini_lease_owner: str | None = None
+    gemini_spend_limit_usd: Decimal = Field(default=Decimal("5.00"), gt=0, lt=Decimal("20.00"))
+    gemini_known_spend_usd: Decimal = Field(default=Decimal(0), ge=0)
+    gemini_input_usd_per_million_tokens: Decimal | None = Field(default=None, ge=0)
+    gemini_output_usd_per_million_tokens: Decimal | None = Field(default=None, ge=0)
+    gemini_cache_write_usd_per_million_tokens: Decimal | None = Field(default=None, ge=0)
+    gemini_cache_read_usd_per_million_tokens: Decimal | None = Field(default=None, ge=0)
+    gemini_prompt_cache_enabled: bool = False
+    gemini_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
+    gemini_read_timeout_seconds: float = Field(default=60.0, gt=0.0, le=300.0)
+    gemini_total_max_attempts: int = Field(default=1, ge=1, le=1)
     agent_max_revisions: int = Field(default=1, ge=0, le=1)
     provider_request_spend_limit_usd: Decimal = Field(default=Decimal("0.50"), gt=0, le=5)
     provider_room_spend_limit_usd: Decimal = Field(default=Decimal("2.00"), gt=0, le=20)
@@ -110,6 +129,8 @@ class Settings(BaseSettings):
     # ASL producer scores are evaluated, never treated as calibrated probabilities.
     word_policy_path: Path | None = None
     word_evaluation_path: Path | None = None
+    word_policy_enforce_vocabulary: bool = True
+    word_policy_enforce_scores: bool = True
     context_assembler_token_budget: int = Field(default=8000, ge=4000, le=32000)
     context_critic_token_budget: int = Field(default=3000, ge=2000, le=8000)
     word_templates_path: Path | None = None
@@ -175,7 +196,9 @@ class Settings(BaseSettings):
             return normalized or None
         return value
 
-    @field_validator("anthropic_workspace_id", "anthropic_lease_owner", mode="before")
+    @field_validator(
+        "anthropic_workspace_id", "anthropic_lease_owner", "gemini_lease_owner", mode="before"
+    )
     @classmethod
     def normalize_anthropic_optional_strings(cls, value: object) -> object:
         if isinstance(value, str):
@@ -188,6 +211,10 @@ class Settings(BaseSettings):
         "anthropic_output_usd_per_million_tokens",
         "anthropic_cache_write_usd_per_million_tokens",
         "anthropic_cache_read_usd_per_million_tokens",
+        "gemini_input_usd_per_million_tokens",
+        "gemini_output_usd_per_million_tokens",
+        "gemini_cache_write_usd_per_million_tokens",
+        "gemini_cache_read_usd_per_million_tokens",
         mode="before",
     )
     @classmethod
@@ -209,6 +236,8 @@ class Settings(BaseSettings):
         "bedrock_model_id",
         "anthropic_model_id",
         "anthropic_api_base_url",
+        "gemini_model_id",
+        "gemini_api_base_url",
         "app_name",
     )
     @classmethod
@@ -238,17 +267,27 @@ class Settings(BaseSettings):
             raise ValueError("allowed_hosts must be exact in production")
         if self.environment == "production" and self.log_level == "DEBUG":
             raise ValueError("DEBUG logging is prohibited in production")
+        if self.environment == "production" and not self.word_policy_enforce_vocabulary:
+            raise ValueError("production requires word policy vocabulary enforcement")
+        if self.environment == "production" and not self.word_policy_enforce_scores:
+            raise ValueError("production requires word policy score enforcement")
         if (
             self.environment == "production"
             and self.anthropic_enabled
             and (self.anthropic_api_base_url != DEFAULT_ANTHROPIC_API_BASE_URL)
         ):
             raise ValueError("production Anthropic credentials require the official API endpoint")
+        if (
+            self.environment == "production"
+            and self.gemini_enabled
+            and self.gemini_api_base_url != DEFAULT_GEMINI_API_BASE_URL
+        ):
+            raise ValueError("production Gemini credentials require the official API endpoint")
         if self.provider_request_spend_limit_usd > self.provider_room_spend_limit_usd:
             raise ValueError("request spend limit cannot exceed room spend limit")
         if (
             self.environment == "production"
-            and (self.bedrock_enabled or self.anthropic_enabled)
+            and (self.bedrock_enabled or self.anthropic_enabled or self.gemini_enabled)
             and self.provider_spend_journal_path is None
         ):
             raise ValueError("production provider requires a persistent spend journal path")
@@ -266,7 +305,7 @@ class Settings(BaseSettings):
             raise ValueError("bedrock_known_spend_usd cannot exceed bedrock_spend_limit_usd")
         if self.bedrock_enabled and self.bedrock_lease_owner is None:
             raise ValueError("bedrock_lease_owner is required when Bedrock is enabled")
-        if self.bedrock_enabled and self.anthropic_enabled:
+        if sum((self.bedrock_enabled, self.anthropic_enabled, self.gemini_enabled)) > 1:
             raise ValueError("only one hosted model provider may be enabled")
         if self.anthropic_known_spend_usd > self.anthropic_spend_limit_usd:
             raise ValueError("anthropic_known_spend_usd cannot exceed anthropic_spend_limit_usd")
@@ -282,6 +321,21 @@ class Settings(BaseSettings):
             if any(rate is None for rate in anthropic_pricing):
                 raise ValueError(
                     "all four anthropic pricing fields are required when Anthropic is enabled"
+                )
+        if self.gemini_known_spend_usd > self.gemini_spend_limit_usd:
+            raise ValueError("gemini_known_spend_usd cannot exceed gemini_spend_limit_usd")
+        if self.gemini_enabled:
+            if self.gemini_lease_owner is None:
+                raise ValueError("gemini_lease_owner is required when Gemini is enabled")
+            gemini_pricing = (
+                self.gemini_input_usd_per_million_tokens,
+                self.gemini_output_usd_per_million_tokens,
+                self.gemini_cache_write_usd_per_million_tokens,
+                self.gemini_cache_read_usd_per_million_tokens,
+            )
+            if any(rate is None for rate in gemini_pricing):
+                raise ValueError(
+                    "all four gemini pricing fields are required when Gemini is enabled"
                 )
         pricing_fields = {
             "bedrock_input_usd_per_million_tokens",

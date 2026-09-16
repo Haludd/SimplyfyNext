@@ -190,10 +190,14 @@ def create_app(
 
     logger.info(
         "startup_configuration environment=%s bedrock_enabled=%s anthropic_enabled=%s "
+        "gemini_enabled=%s word_policy_configured=%s word_templates_configured=%s "
         "port=%s room_max_active=%s max_concurrent_agent_runs=%s workers=1",
         runtime_settings.environment,
         runtime_settings.bedrock_enabled,
         runtime_settings.anthropic_enabled,
+        runtime_settings.gemini_enabled,
+        runtime_settings.word_policy_path is not None,
+        runtime_settings.word_templates_path is not None,
         runtime_settings.port,
         runtime_settings.room_max_active,
         runtime_settings.max_concurrent_agent_runs,

@@ -38,30 +38,36 @@ async def health() -> dict[str, str]:
 @health_router.get("/readyz")
 async def readiness(request: Request, response: Response) -> dict[str, object]:
     services = services_from_request(request)
+    settings = services.settings
+    provider = (
+        "gemini"
+        if settings.gemini_enabled
+        else "anthropic"
+        if settings.anthropic_enabled
+        else "bedrock"
+        if settings.bedrock_enabled
+        else "templates"
+        if settings.word_templates_path is not None
+        else "disabled"
+    )
+    policy_ready = settings.word_policy_path is not None and (
+        settings.environment != "production" or settings.word_evaluation_path is not None
+    )
+    sentence_backend_ready = provider in {"gemini", "anthropic", "bedrock"} or (
+        settings.environment != "production" and provider == "templates"
+    )
     return {
         "status": "ready",
         "rooms": {
             "transport_ready": True,
-            "sentence_acceptance_ready": (
-                services.settings.word_policy_path is not None
-                and (
-                    services.settings.environment != "production"
-                    or services.settings.word_evaluation_path is not None
-                )
-                and (services.settings.anthropic_enabled or services.settings.bedrock_enabled)
-            ),
+            "sentence_acceptance_ready": policy_ready and sentence_backend_ready,
             "utterance_schema_version": "1.0",
             "event_schema_version": "1.0",
             "source_language": "asl",
             "max_message_bytes": 16_384,
-            "word_policy_configured": services.settings.word_policy_path is not None,
-            "word_provider": (
-                "anthropic"
-                if services.settings.anthropic_enabled
-                else "bedrock"
-                if services.settings.bedrock_enabled
-                else "deterministic"
-            ),
+            "word_policy_configured": settings.word_policy_path is not None,
+            "word_templates_configured": settings.word_templates_path is not None,
+            "word_provider": provider,
         },
     }
 

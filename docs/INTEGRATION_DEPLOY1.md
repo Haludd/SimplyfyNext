@@ -121,6 +121,8 @@ python scripts/room_protocol_smoke.py \
 `rooms.transport_ready` must be `true`. `rooms.sentence_acceptance_ready` must
 also be `true` before claiming production sign-to-sentence output. If it is
 false, room chat works and signed messages safely request repair.
+Use [SENTENCE_PIPELINE_TROUBLESHOOTING.md](SENTENCE_PIPELINE_TROUBLESHOOTING.md)
+to distinguish policy, provider, Bedrock IAM, and WebSocket delivery failures.
 
 ### Frontend service
 

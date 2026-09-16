@@ -23,7 +23,7 @@ checkpoints exist in this runtime. The retired session transport is absent.
 | `rooms/service.py` | Immediate admission, bounded background translation and compaction, terminal commit |
 | `agent/words/` | Independent assembly/criticism, strict aligned output, deterministic repairs/evaluation |
 | `translation_runtime.py` | Producer/score policy, qualified production evidence, word graph composition |
-| `provider_runtime.py` | One shared guarded Anthropic/Bedrock client and access preflight |
+| `provider_runtime.py` | One shared guarded Bedrock, Anthropic, or Gemini client and access preflight |
 | `api/` | HTTP, first-packet-authenticated WebSocket, size and operator controls |
 | `observability/` | Content-free token/count/timing/cost aggregates |
 

@@ -168,4 +168,110 @@ void main() {
     expect(room.status, RoomConnectionStatus.ended);
     expect(storage.read(), isNull);
   });
+
+  testWidgets(
+    'recovers a terminal sign result when its socket event is missed',
+    (tester) async {
+      const messageId = '22222222-2222-4222-8222-222222222222';
+      var snapshotRequests = 0;
+      final client = MockClient((request) async {
+        if (request.url.path == '/v1/rooms') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'utterance_schema_version': '1.0',
+              'code': 'ABCDEFGH',
+              'participant_id': '11111111-1111-4111-8111-111111111111',
+              'role': 'signer',
+              'token': 'participant-secret',
+              'join_path': '/?room=ABCDEFGH',
+            }),
+            201,
+          );
+        }
+        if (request.url.path.endsWith('/sign-utterances')) {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'type': 'utterance_ack',
+              'message_id': messageId,
+              'client_sequence': 0,
+              'server_sequence': 0,
+              'disposition': 'accepted',
+            }),
+            202,
+          );
+        }
+        if (request.method == 'GET' &&
+            request.url.path == '/v1/rooms/ABCDEFGH') {
+          snapshotRequests += 1;
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'type': 'snapshot',
+              'room_version': 2,
+              'state': 'active',
+              'context_version': 1,
+              'participants': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'participant_id': '11111111-1111-4111-8111-111111111111',
+                  'role': 'signer',
+                  'alias': 'Signer',
+                  'online': false,
+                },
+              ],
+              'messages': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message_id': messageId,
+                  'sender_id': '11111111-1111-4111-8111-111111111111',
+                  'client_sequence': 0,
+                  'server_sequence': 0,
+                  'context_version': 0,
+                  'source': 'sign',
+                  'status': 'accepted',
+                  'text': 'I want water.',
+                  'translation': <String, dynamic>{
+                    'status': 'accepted',
+                    'text': 'I want water.',
+                    'tts_text': 'I want water.',
+                    'confidence': 0.9,
+                    'confidence_kind': 'normalized_model_score',
+                    'model_version': 'provider-test',
+                    'policy_version': 'policy-test',
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        fail('Unexpected request: ${request.method} ${request.url.path}');
+      });
+      final room = RoomSessionController(
+        config: RoomClientConfig(apiOrigin: Uri.parse('http://127.0.0.1:8000')),
+        httpClient: client,
+        socketConnector: (_) => throw StateError('socket unavailable in test'),
+      );
+
+      await room.create('Signer');
+      final fixture = jsonDecode(
+        File('../tests/fixtures/translated_sign_utterance_v1.json')
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      fixture['message_id'] = messageId;
+      fixture['client_sequence'] = 0;
+      await room.submit(TranslatedSignUtterance.fromJson(fixture));
+
+      expect(room.messages, isEmpty);
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(snapshotRequests, 1);
+      expect(room.messages.single.status, 'accepted');
+      expect(room.messages.single.text, 'I want water.');
+      expect(room.messages.single.ttsText, 'I want water.');
+      room.dispose();
+      await tester.pump();
+    },
+  );
 }

@@ -157,6 +157,46 @@ async def test_hosted_stages_are_independent_and_context_is_narrowed():
     assert set(c) == {"reference_context", "current_evidence", "draft"}
 
 
+async def test_gemini_selects_the_same_assembler_and_critic_graph():
+    fake = FakeConverse(response(ENTRIES[0]["draft"]), response(verdict()))
+    settings = Settings(
+        _env_file=None,
+        gemini_enabled=True,
+        gemini_lease_owner="developer",
+        gemini_input_usd_per_million_tokens=Decimal("0"),
+        gemini_output_usd_per_million_tokens=Decimal("0"),
+        gemini_cache_write_usd_per_million_tokens=Decimal("0"),
+        gemini_cache_read_usd_per_million_tokens=Decimal("0"),
+        word_policy_path=ROOT / "data/word_policy.synthetic.json",
+    )
+
+    result = await build_word_translation_engine(settings, fake).process(
+        utterance(), context()
+    )
+
+    assert result.status == "accepted"
+    assert result.text == "I want water."
+    assert [call["requestMetadata"]["simplynext_role"] for call in fake.calls] == [
+        "word_assembler",
+        "word_critic",
+    ]
+
+
+def test_assembler_repairs_only_terminal_punctuation_alignment_drift():
+    draft = json.loads(json.dumps(ENTRIES[0]["draft"]))
+    draft["alignment"][-1]["text"] = draft["alignment"][-1]["text"].rstrip(".?!")
+    provider = WordProvider(FakeConverse(response(draft)), "mock-word-model")
+
+    normalized = provider.request(
+        "assembler",
+        {"reference_context": {}, "current_evidence": {}},
+        WordDraft,
+        "test-utterance",
+    )
+
+    assert " ".join(span.text for span in normalized.alignment) == normalized.candidate_text
+
+
 @pytest.mark.parametrize("success", [True, False])
 async def test_only_one_revision_and_final_criticism(success):
     fake = FakeConverse(

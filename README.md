@@ -77,12 +77,15 @@ session/classifier/caption-template settings. No legacy payload is converted int
 [WORD_ROOM_V1.md](plan/WORD_ROOM_V1.md) specifies inputs, events, retry/recovery and deletion.
 Generated models are in `client/`; package schemas and canonical/invalid fixtures have a drift check.
 QR invitations contain only the public join path and room code; never embed capabilities.
+[Signed-word sentence troubleshooting](docs/SENTENCE_PIPELINE_TROUBLESHOOTING.md) explains readiness,
+the local accepted-sentence smoke, Bedrock IAM checks, and the optional Gemini diagnostic.
 
 ## Provider and deployment controls
 
-Both providers default off. Choose one: direct Anthropic (`ANTHROPIC_API_KEY` injected as a secret)
-or Bedrock (standard AWS credential chain). Require the explicit lease owner, verified model prices,
-timeout/retry limits and spend ceiling in `.env.example`. Both use the shared cost guard and access
+All hosted providers default off. Choose one: Bedrock (standard AWS credential chain), direct
+Anthropic (`ANTHROPIC_API_KEY`), or Gemini (`GEMINI_API_KEY`) as a development diagnostic.
+Require the explicit lease owner, verified model prices, timeout/retry limits and spend ceiling in
+`.env.example`. All use the shared cost guard and access
 preflight. Startup with a hosted provider can incur the small guarded preflight request.
 Production sentence acceptance also requires matching `SIMPLYNEXT_WORD_POLICY_PATH` and
 `SIMPLYNEXT_WORD_EVALUATION_PATH`; invalid qualification fails before provider initialization.

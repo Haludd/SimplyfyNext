@@ -53,7 +53,7 @@ repositories. Release by the reviewed image digest.
 
 ## 3. Deployment spend persistence and provider activation
 
-First verify text and safe repair with both providers off. Then:
+First verify text and safe repair with all hosted providers off. Then:
 
 1. Complete [producer qualification](WORD_ACCEPTANCE_POLICY.md) with independent human review;
    mount reviewed policy/evaluation files read-only. This round changes pipeline code, so older

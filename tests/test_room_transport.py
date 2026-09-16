@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator
 from starlette.websockets import WebSocketDisconnect
 
 from simplynext.config import Settings
-from simplynext.contracts.room_events import ROOM_EVENT_ADAPTER
+from simplynext.contracts.room_events import ROOM_EVENT_ADAPTER, AcceptedOutcome
 from simplynext.main import create_app
 
 ROOT = Path(__file__).parents[1]
@@ -135,6 +135,42 @@ def test_two_devices_text_sign_repair_replay_reconnect_and_end(client):
     assert client.get(base, headers=headers(signer)).status_code == 410
     assert client.get(base, headers=headers(hearing)).status_code == 410
     assert client.app.state.services.rooms.store.rooms == {}
+
+
+def test_accepted_sentence_reaches_both_frontends_with_tts_text():
+    class ImmediateTranslator:
+        async def process(self, utterance, context):
+            return AcceptedOutcome(
+                text="I want water.",
+                tts_text="I want water.",
+                confidence=0.9,
+                model_version="provider-test",
+                policy_version="policy-test",
+            )
+
+    app = create_app(
+        Settings(_env_file=None, environment="test"),
+        word_translation=ImmediateTranslator(),
+    )
+    with TestClient(app) as accepted_client:
+        signer, hearing = credentials(accepted_client)
+        base = f"/v1/rooms/{signer['code']}"
+        with accepted_client.websocket_connect(base + "/events") as one:
+            connect(one, signer)
+            with accepted_client.websocket_connect(base + "/events") as two:
+                connect(two, hearing)
+                response = accepted_client.post(
+                    base + "/sign-utterances",
+                    headers=headers(signer),
+                    json=json.loads(RAW),
+                )
+                assert response.status_code == 202
+                for socket in (one, two):
+                    assert next_type(socket, "message_upsert")["message"]["status"] == "processing"
+                    terminal = next_type(socket, "message_upsert")["message"]
+                    assert terminal["status"] == "accepted"
+                    assert terminal["text"] == "I want water."
+                    assert terminal["translation"]["tts_text"] == "I want water."
 
 
 def test_signer_can_type_after_repair_and_hearing_cannot_submit_signs(client):

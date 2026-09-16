@@ -43,6 +43,9 @@ final class RoomSessionController extends ChangeNotifier
   StreamSubscription<dynamic>? _socketSubscription;
   Timer? _heartbeat;
   Timer? _reconnectTimer;
+  Timer? _terminalRecoveryTimer;
+  String? _terminalRecoveryMessageId;
+  int _terminalRecoveryAttempt = 0;
   RoomCredentials? _credentials;
   RoomConnectionStatus _status = RoomConnectionStatus.idle;
   String? _error;
@@ -295,6 +298,7 @@ final class RoomSessionController extends ChangeNotifier
         expectedClientSequence: utterance.clientSequence,
       );
       _completePending(acknowledgement.clientSequence);
+      _scheduleTerminalRecovery(utterance.messageId);
       return acknowledgement;
     } on RoomSessionException catch (failure) {
       throw TranslatedSignUtteranceSubmissionException(
@@ -548,6 +552,7 @@ final class RoomSessionController extends ChangeNotifier
           return MapEntry<String, RoomMessage>(message.key, message);
         }),
       );
+    _stopTerminalRecoveryIfComplete();
     final ownId = _credentials?.participantId;
     final ownMessages = _messages.values.where(
       (message) => message.senderId == ownId,
@@ -585,6 +590,76 @@ final class RoomSessionController extends ChangeNotifier
       final text = message.ttsText ?? message.text;
       if (text != null) unawaited(onIncomingSignedText?.call(text));
     }
+    if (message.messageId == _terminalRecoveryMessageId && message.isTerminal) {
+      _cancelTerminalRecovery();
+    }
+  }
+
+  /// WebSocket delivery is primary. These sparse authenticated snapshots make
+  /// a terminal sentence/repair visible even if a proxy silently drops one
+  /// incremental event while leaving the socket open.
+  void _scheduleTerminalRecovery(String messageId) {
+    _terminalRecoveryTimer?.cancel();
+    _terminalRecoveryMessageId = messageId;
+    _terminalRecoveryAttempt = 0;
+    _scheduleNextTerminalRecovery();
+  }
+
+  void _scheduleNextTerminalRecovery() {
+    if (_disposed ||
+        _credentials == null ||
+        _terminalRecoveryMessageId == null) {
+      return;
+    }
+    const delays = <Duration>[
+      Duration(seconds: 3),
+      Duration(seconds: 10),
+      Duration(seconds: 30),
+      Duration(seconds: 60),
+    ];
+    if (_terminalRecoveryAttempt >= delays.length) return;
+    final delay = delays[_terminalRecoveryAttempt++];
+    _terminalRecoveryTimer = Timer(
+      delay,
+      () => unawaited(_recoverTerminalMessage()),
+    );
+  }
+
+  Future<void> _recoverTerminalMessage() async {
+    final messageId = _terminalRecoveryMessageId;
+    if (messageId == null || _disposed || _credentials == null) return;
+    if (_hasTerminalMessage(messageId)) {
+      _cancelTerminalRecovery();
+      return;
+    }
+    try {
+      await recover();
+    } on Object {
+      // Socket reconnect and the next bounded snapshot remain available.
+    }
+    if (_hasTerminalMessage(messageId) || _credentials == null) {
+      _cancelTerminalRecovery();
+    } else {
+      _scheduleNextTerminalRecovery();
+    }
+  }
+
+  bool _hasTerminalMessage(String messageId) => _messages.values.any(
+    (message) => message.messageId == messageId && message.isTerminal,
+  );
+
+  void _stopTerminalRecoveryIfComplete() {
+    final messageId = _terminalRecoveryMessageId;
+    if (messageId != null && _hasTerminalMessage(messageId)) {
+      _cancelTerminalRecovery();
+    }
+  }
+
+  void _cancelTerminalRecovery() {
+    _terminalRecoveryTimer?.cancel();
+    _terminalRecoveryTimer = null;
+    _terminalRecoveryMessageId = null;
+    _terminalRecoveryAttempt = 0;
   }
 
   bool _matchesPendingRequest(RoomMessage message) {
@@ -808,6 +883,7 @@ final class RoomSessionController extends ChangeNotifier
 
   Future<void> _finishLocally(String message) async {
     _status = RoomConnectionStatus.ended;
+    _cancelTerminalRecovery();
     await _closeSocket();
     _credentials = null;
     _messages.clear();
@@ -826,6 +902,7 @@ final class RoomSessionController extends ChangeNotifier
   @override
   void dispose() {
     _disposed = true;
+    _cancelTerminalRecovery();
     unawaited(_closeSocket());
     if (_ownsHttp) _http.close();
     super.dispose();

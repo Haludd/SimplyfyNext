@@ -6,9 +6,9 @@ import json
 import re
 from collections.abc import Mapping
 from importlib.resources import files
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from simplynext.agent.words.state import WordDraft, WordVerdict
 from simplynext.contracts.room_events import Reason
@@ -146,7 +146,46 @@ class WordProvider:
             or not isinstance(block["text"], str)
         ):
             raise WordOutputFailure("invalid_output")
-        return parse_value(schema, block["text"], max_bytes=24_576 if role == "assembler" else 2048)
+        maximum_bytes = 24_576 if role == "assembler" else 2048
+        try:
+            return parse_value(schema, block["text"], max_bytes=maximum_bytes)
+        except ValidationError:
+            if schema is not WordDraft:
+                raise
+            # Some providers keep terminal punctuation in candidate_text but
+            # omit it from the otherwise identical final alignment span.
+            return cast(M, _normalize_draft_alignment(block["text"], maximum_bytes))
+
+
+def _normalize_draft_alignment(raw: str, maximum_bytes: int) -> WordDraft:
+    """Repair punctuation-only alignment drift without changing any words."""
+
+    document = json.loads(raw)
+    if not isinstance(document, dict):
+        raise ValueError("draft response must be an object")
+    candidate_text = document.get("candidate_text")
+    alignment = document.get("alignment")
+    if not isinstance(candidate_text, str) or not isinstance(alignment, list):
+        raise ValueError("draft response lacks a candidate/alignment pair")
+    candidate_tokens = candidate_text.split()
+    if len(candidate_tokens) != len(alignment) or not candidate_tokens:
+        raise ValueError("draft response changes its alignment length")
+
+    repaired_alignment: list[dict[str, Any]] = []
+    for candidate_token, raw_span in zip(candidate_tokens, alignment, strict=True):
+        if not isinstance(raw_span, dict):
+            raise ValueError("draft response has an invalid alignment span")
+        span_text = raw_span.get("text")
+        if not isinstance(span_text, str) or _token_core(span_text) != _token_core(candidate_token):
+            raise ValueError("draft response changes an aligned word")
+        repaired_alignment.append({**raw_span, "text": candidate_token})
+
+    repaired = {**document, "alignment": repaired_alignment}
+    return parse_value(WordDraft, json.dumps(repaired, ensure_ascii=True), max_bytes=maximum_bytes)
+
+
+def _token_core(token: str) -> str:
+    return token.rstrip(",.?!").lower()
 
 
 class ProviderWordAssembler:

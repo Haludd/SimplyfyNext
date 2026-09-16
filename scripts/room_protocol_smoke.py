@@ -41,7 +41,7 @@ async def run_smoke(
                 assert (await client.get(base_url + path)).status_code in {401, 404}
         if templates:
             readiness = (await client.get(base_url + "/readyz")).json()
-            if readiness["rooms"]["word_provider"] != "deterministic":
+            if readiness["rooms"]["word_provider"] != "templates":
                 raise RuntimeError("template smoke refuses a hosted provider")
         response = await client.post(
             base_url + "/v1/rooms",

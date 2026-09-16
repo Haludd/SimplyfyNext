@@ -27,7 +27,7 @@ def check(settings: Settings, verified_on: date | None = None) -> dict[str, obje
     ):
         raise ValueError("dedicated metrics secret must contain at least 32 characters")
     policy = load_word_policy(settings)
-    enabled = settings.anthropic_enabled or settings.bedrock_enabled
+    enabled = settings.anthropic_enabled or settings.bedrock_enabled or settings.gemini_enabled
     if enabled:
         if policy is None:
             raise ValueError("qualify producer and model before enabling paid production mode")
@@ -36,7 +36,13 @@ def check(settings: Settings, verified_on: date | None = None) -> dict[str, obje
             or not date.today() - timedelta(days=7) <= verified_on <= date.today()
         ):
             raise ValueError("verify selected model pricing within seven days of release")
-        provider = "anthropic" if settings.anthropic_enabled else "bedrock"
+        provider = (
+            "gemini"
+            if settings.gemini_enabled
+            else "anthropic"
+            if settings.anthropic_enabled
+            else "bedrock"
+        )
         for kind in ("input", "output", "cache_write", "cache_read"):
             field = f"{provider}_{kind}_usd_per_million_tokens"
             if field not in settings.model_fields_set or getattr(settings, field) <= 0:

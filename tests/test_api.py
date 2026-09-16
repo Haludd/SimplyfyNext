@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
@@ -13,7 +15,24 @@ def test_room_readiness_does_not_claim_unconfigured_sentence_acceptance():
         assert ready.status_code == 200
         assert ready.json()["rooms"]["transport_ready"]
         assert not ready.json()["rooms"]["sentence_acceptance_ready"]
+        assert ready.json()["rooms"]["word_provider"] == "disabled"
+        assert not ready.json()["rooms"]["word_policy_configured"]
         assert ready.json()["rooms"]["source_language"] == "asl"
+
+
+def test_room_readiness_reports_local_template_sentence_mode() -> None:
+    root = Path(__file__).parents[1]
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        word_policy_path=root / "data/word_policy.synthetic.json",
+        word_templates_path=root / "data/word_templates.example.json",
+    )
+    with TestClient(create_app(settings)) as client:
+        rooms = client.get("/readyz").json()["rooms"]
+        assert rooms["sentence_acceptance_ready"]
+        assert rooms["word_provider"] == "templates"
+        assert rooms["word_templates_configured"]
 
 
 def test_retired_routes_are_absent_and_non_asl_startup_fails():

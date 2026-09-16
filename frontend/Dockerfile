@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1.7
-ARG FLUTTER_IMAGE=ghcr.io/cirruslabs/flutter:stable
+ARG FLUTTER_IMAGE=docker.io/gmeligio/flutter-android:3.47.4
 FROM ${FLUTTER_IMAGE} AS build
 
 ARG SIGNBRIDGE_API_BASE_URL
 WORKDIR /app
+RUN flutter config --enable-web
 COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 COPY . .

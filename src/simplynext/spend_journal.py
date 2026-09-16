@@ -85,3 +85,34 @@ def money(value: object) -> Decimal:
     if not result.is_finite() or result < 0:
         raise ValueError("invalid money")
     return result
+
+
+def init_spend_journal(path: Path, *, charged_usd: Decimal = Decimal(0)) -> None:
+    """Safely provision a fresh usage.json journal using exclusive creation (never overwrite)."""
+    if not path.is_absolute() or not path.parent.is_dir():
+        raise ValueError("spend journal requires an absolute path on an existing volume")
+    data = json.dumps(
+        {
+            "version": 1,
+            "charged_usd": str(charged_usd),
+            "hourly": {},
+        }
+    ).encode()
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 2:
+        print("Usage: python -m simplynext.spend_journal <usage.json> [initial_usd]")
+        sys.exit(1)
+    target = Path(sys.argv[1]).resolve()
+    initial_charge = Decimal(sys.argv[2]) if len(sys.argv) > 2 else Decimal(0)
+    init_spend_journal(target, charged_usd=initial_charge)
+    print(f"Provisioned spend journal at {target}")

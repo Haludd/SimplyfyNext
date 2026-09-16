@@ -55,9 +55,22 @@ def check(settings: Settings, verified_on: date | None = None) -> dict[str, obje
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pricing-verified-on", type=date.fromisoformat)
+    parser.add_argument(
+        "--init-journal",
+        action="store_true",
+        help="Safely provision an initial usage.json if missing",
+    )
     args = parser.parse_args()
     try:
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        if (
+            args.init_journal
+            and settings.provider_spend_journal_path is not None
+            and not settings.provider_spend_journal_path.exists()
+        ):
+            from simplynext.spend_journal import init_spend_journal
+
+            init_spend_journal(settings.provider_spend_journal_path)
         result = check(settings, args.pricing_verified_on)
     except Exception:
         # Validation exceptions can embed configuration values; never print them.

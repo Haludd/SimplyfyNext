@@ -1,5 +1,6 @@
 """Bounded v1 room HTTP transport; capabilities never come from request identities."""
 
+import logging
 from typing import TypeVar, cast
 
 from fastapi import APIRouter, Request
@@ -13,6 +14,7 @@ from simplynext.rooms.store import RoomFailure
 
 room_router = APIRouter()
 T = TypeVar("T", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 def service_for(request: Request) -> RoomService:
@@ -43,6 +45,35 @@ async def read_input(request: Request, model: type[T]) -> T:
 
 def reply(model: BaseModel, status: int = 200) -> JSONResponse:
     return JSONResponse(model.model_dump(mode="json", exclude_none=True), status_code=status)
+
+
+def trace_room_transport(
+    request: Request,
+    *,
+    direction: str,
+    endpoint: str,
+    payload: BaseModel,
+) -> None:
+    """Log only finalized room content during an explicitly enabled local demo.
+
+    This route layer never receives a camera frame or landmark payload. Room
+    capabilities live in the Authorization header and are intentionally not
+    read into the trace.
+    """
+
+    settings = request.app.state.services.settings
+    if not settings.transport_trace_enabled:
+        return
+    logger.info(
+        "room_transport_trace",
+        extra={
+            "room_transport": {
+                "direction": direction,
+                "endpoint": endpoint,
+                "payload": payload.model_dump(mode="json", exclude_none=True),
+            }
+        },
+    )
 
 
 @room_router.post("/rooms")
@@ -102,12 +133,36 @@ async def submit(request: Request, code: str, model: type[T]) -> T:
 @room_router.post("/rooms/{code}/sign-utterances")
 async def sign_utterance(request: Request, code: str) -> JSONResponse:
     inputs = await submit(request, code, TranslatedSignUtteranceV1)
+    trace_room_transport(
+        request,
+        direction="frontend_to_backend",
+        endpoint="POST /v1/rooms/{code}/sign-utterances",
+        payload=inputs,
+    )
     admission = await service_for(request).submit(code, bearer(request), inputs)
+    trace_room_transport(
+        request,
+        direction="backend_to_frontend",
+        endpoint="HTTP 202 /v1/rooms/{code}/sign-utterances",
+        payload=admission.ack,
+    )
     return reply(admission.ack, 202)
 
 
 @room_router.post("/rooms/{code}/messages")
 async def text_message(request: Request, code: str) -> JSONResponse:
     inputs = await submit(request, code, TextMessage)
+    trace_room_transport(
+        request,
+        direction="frontend_to_backend",
+        endpoint="POST /v1/rooms/{code}/messages",
+        payload=inputs,
+    )
     admission = await service_for(request).submit(code, bearer(request), inputs)
+    trace_room_transport(
+        request,
+        direction="backend_to_frontend",
+        endpoint="HTTP 200/201 /v1/rooms/{code}/messages",
+        payload=admission.message,
+    )
     return reply(admission.message, 200 if admission.ack.disposition == "cached" else 201)

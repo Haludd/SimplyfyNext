@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -75,6 +76,11 @@ class _ConversationShellState extends State<ConversationShell> {
               onPressed: () => _showInvitation(context),
               icon: const Icon(Icons.qr_code_2),
             ),
+          IconButton(
+            tooltip: 'View backend traffic',
+            onPressed: () => _showTransportInspector(context),
+            icon: const Icon(Icons.data_object),
+          ),
           IconButton(
             tooltip: 'End conversation',
             onPressed: () => _confirmEnd(context),
@@ -158,6 +164,14 @@ class _ConversationShellState extends State<ConversationShell> {
     );
   }
 
+  Future<void> _showTransportInspector(BuildContext context) =>
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _TransportInspector(room: widget.room),
+      );
+
   Future<void> _confirmEnd(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -180,6 +194,155 @@ class _ConversationShellState extends State<ConversationShell> {
       ),
     );
     if (confirmed == true) await widget.room.end();
+  }
+}
+
+class _TransportInspector extends StatelessWidget {
+  const _TransportInspector({required this.room});
+
+  final RoomSessionController room;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: FractionallySizedBox(
+      heightFactor: .88,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        decoration: const BoxDecoration(
+          color: _background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: AnimatedBuilder(
+          animation: room,
+          builder: (context, _) {
+            final traces = room.transportTrace.reversed.toList(growable: false);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    const Icon(Icons.data_object, color: _cyan),
+                    const SizedBox(width: 9),
+                    const Expanded(
+                      child: Text(
+                        'Backend traffic',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: traces.isEmpty
+                          ? null
+                          : room.clearTransportTrace,
+                      child: const Text('Clear'),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Frontend → backend shows what this app sent. Backend → frontend shows HTTP responses and room WebSocket events. Tokens are redacted; camera frames and landmarks are never recorded here.',
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: traces.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No room traffic yet. Create or join a room, then send a message or sign sequence.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: _muted),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: traces.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) =>
+                              _TransportTraceCard(trace: traces[index]),
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
+class _TransportTraceCard extends StatelessWidget {
+  const _TransportTraceCard({required this.trace});
+
+  final RoomTransportTrace trace;
+
+  @override
+  Widget build(BuildContext context) {
+    final outgoing =
+        trace.direction == RoomTransportDirection.frontendToBackend;
+    final accent = outgoing ? _cyan : _mint;
+    final direction = outgoing ? 'FRONTEND → BACKEND' : 'BACKEND → FRONTEND';
+    final timestamp = TimeOfDay.fromDateTime(trace.occurredAt).format(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: .45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '$direction · ${trace.transport.toUpperCase()}',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .5,
+                  ),
+                ),
+              ),
+              Text(
+                timestamp,
+                style: const TextStyle(color: _muted, fontSize: 10),
+              ),
+              IconButton(
+                tooltip: 'Copy JSON',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Clipboard.setData(
+                  ClipboardData(text: trace.formattedPayload),
+                ),
+                icon: const Icon(Icons.copy_outlined, size: 16),
+              ),
+            ],
+          ),
+          Text(
+            trace.label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            const JsonEncoder.withIndent('  ').convert(trace.payload),
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 11,
+              height: 1.3,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -463,9 +626,7 @@ class _ChatViewState extends State<_ChatView> {
                 IconButton.filled(
                   key: const ValueKey<String>('send-chat-message'),
                   tooltip: 'Send message',
-                  onPressed: room.submissionInFlight || partner == null
-                      ? null
-                      : _sendText,
+                  onPressed: room.submissionInFlight ? null : _sendText,
                   icon: const Icon(Icons.send),
                 ),
               ],
@@ -569,10 +730,7 @@ class _SpeechComposer extends StatelessWidget {
                 ),
                 FilledButton.icon(
                   key: const ValueKey<String>('send-speech-message'),
-                  onPressed:
-                      transcript.isEmpty ||
-                          room.submissionInFlight ||
-                          room.partner == null
+                  onPressed: transcript.isEmpty || room.submissionInFlight
                       ? null
                       : () async {
                           if (listening) await speech.stopListening();

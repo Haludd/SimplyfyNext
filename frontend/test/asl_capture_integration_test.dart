@@ -29,6 +29,26 @@ const _hello = AslRecognitionResult(
   frameCount: 25,
 );
 
+const _uncertainHello = AslRecognitionResult(
+  status: 'recognized',
+  word: 'hello',
+  confidence: .60,
+  modelVersion: 'signchat_asl_signs_onnx',
+  frameCount: 25,
+);
+
+const _veryUncertainHello = AslRecognitionResult(
+  status: 'unknown',
+  confidence: .01,
+  modelVersion: 'signchat_asl_signs_onnx',
+  frameCount: 25,
+  reason: 'low_confidence',
+  alternatives: <AslRecognitionCandidate>[
+    AslRecognitionCandidate(word: 'hello', confidence: .01, rank: 1),
+    AslRecognitionCandidate(word: 'please', confidence: .005, rank: 2),
+  ],
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
@@ -259,7 +279,7 @@ void main() {
   );
 
   test(
-    'keeps the completed words local until the signer explicitly sends',
+    'never auto-sends completed words; the signer explicitly sends them',
     () async {
       Map<String, dynamic>? sent;
       final submission = TranslatedSignUtteranceSubmissionService(
@@ -290,7 +310,6 @@ void main() {
         aslRecognizer: _Recognizer(),
         utteranceSubmission: submission,
         messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
-        utteranceIdleTimeout: const Duration(milliseconds: 10),
       )..audioEnabled = false;
       addTearDown(controller.dispose);
       await Future<void>.delayed(Duration.zero);
@@ -312,6 +331,67 @@ void main() {
       expect(controller.translatedWords, isEmpty);
     },
   );
+
+  test(
+    'requires review before adding a low-confidence word and allows removal',
+    () async {
+      final (controller, tracking, bridge) = await _controller();
+      addTearDown(controller.dispose);
+      bridge.result = _uncertainHello;
+
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await controller.analyzeSign();
+
+      expect(controller.translatedWords, isEmpty);
+      expect(controller.pendingTranslatedWords, <String>['HELLO']);
+      expect(controller.pendingTranslatedWordConfidence, .60);
+
+      controller.addPendingTranslatedWords();
+      expect(controller.translatedWords, <String>['HELLO']);
+      expect(controller.hasPendingTranslatedWords, isFalse);
+
+      controller.removeTranslatedWordAt(0);
+      expect(controller.translatedWords, isEmpty);
+    },
+  );
+
+  test('offers a one-percent top suggestion for explicit review', () async {
+    final (controller, tracking, bridge) = await _controller();
+    addTearDown(controller.dispose);
+    bridge.result = _veryUncertainHello;
+
+    tracking.beginUtterance();
+    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+    await controller.analyzeSign();
+
+    expect(
+      controller.visibleAnalysis?.caption,
+      contains('Possible sign: hello'),
+    );
+    expect(controller.translatedWords, isEmpty);
+    expect(controller.pendingTranslatedWords, <String>['HELLO']);
+    expect(controller.pendingTranslatedWordConfidence, .01);
+  });
+
+  test('a following sign dismisses an unconfirmed possible word', () async {
+    final (controller, tracking, bridge) = await _controller();
+    addTearDown(controller.dispose);
+    bridge.result = _veryUncertainHello;
+
+    tracking.beginUtterance();
+    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+    await controller.analyzeSign();
+    expect(controller.pendingTranslatedWords, <String>['HELLO']);
+
+    bridge.result = _hello;
+    tracking.beginUtterance();
+    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+    await controller.analyzeSign();
+
+    expect(controller.pendingTranslatedWords, isEmpty);
+    expect(controller.translatedWords, <String>['HELLO']);
+  });
 }
 
 Future<(AppController, DemoTrackingService, _Recognizer)> _controller() async {
@@ -333,12 +413,13 @@ class _Recognizer extends AslRecognizerBridge {
   bool fail = false;
   int finishCalls = 0;
   Completer<AslRecognitionResult?>? pending;
+  AslRecognitionResult result = _hello;
   @override
   bool get isSupported => true;
   @override
   Future<AslRecognitionResult?> finishCapture() async {
     finishCalls++;
     if (fail) throw StateError('test runtime failure');
-    return pending == null ? _hello : await pending!.future;
+    return pending == null ? result : await pending!.future;
   }
 }

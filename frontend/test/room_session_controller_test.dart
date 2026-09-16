@@ -101,6 +101,26 @@ void main() {
         '/v1/rooms/ABCDEFGH/messages',
         '/v1/rooms/ABCDEFGH/sign-utterances',
       ]);
+
+      final signRequest = room.transportTrace.firstWhere(
+        (trace) =>
+            trace.direction == RoomTransportDirection.frontendToBackend &&
+            trace.label == 'POST /v1/rooms/ABCDEFGH/sign-utterances',
+      );
+      final signBody = signRequest.payload as Map;
+      expect((signBody['body'] as Map)['words'], isNotEmpty);
+      expect(jsonEncode(signBody), isNot(contains('landmarks')));
+
+      final createResponse = room.transportTrace.firstWhere(
+        (trace) =>
+            trace.direction == RoomTransportDirection.backendToFrontend &&
+            trace.label == 'POST /v1/rooms · HTTP 201',
+      );
+      expect(jsonEncode(createResponse.payload), contains('[redacted]'));
+      expect(
+        jsonEncode(createResponse.payload),
+        isNot(contains('participant-secret')),
+      );
     },
   );
 

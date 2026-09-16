@@ -37,6 +37,7 @@ final class RoomSessionController extends ChangeNotifier
       <String, RoomParticipant>{};
   final Map<String, String> _activity = <String, String>{};
   final Set<String> _spokenTerminalMessages = <String>{};
+  final List<RoomTransportTrace> _transportTrace = <RoomTransportTrace>[];
 
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSubscription;
@@ -67,16 +68,28 @@ final class RoomSessionController extends ChangeNotifier
   bool get submissionInFlight => _submissionInFlight;
   bool get hasPendingRetry => _pendingRequest != null;
 
+  /// A short, in-memory-only record for the UI's transport inspector.
+  /// It contains finalized room payloads and redacted backend events, never
+  /// camera frames, landmarks, or participant credentials.
+  List<RoomTransportTrace> get transportTrace =>
+      List<RoomTransportTrace>.unmodifiable(_transportTrace);
+
+  void clearTransportTrace() {
+    if (_transportTrace.isEmpty) return;
+    _transportTrace.clear();
+    notifyListeners();
+  }
+
   @override
-  bool get isConfigured => isSigner && hasRoom && partner != null;
+  /// A signer may use a newly created room alone while testing the local
+  /// camera-to-backend flow. A hearing participant can still join later.
+  bool get isConfigured => isSigner && hasRoom;
 
   @override
   String? get configurationMessage => !hasRoom
       ? 'Create a signing room before sending an utterance.'
       : !isSigner
       ? 'Only the signing participant can send recognized sign words.'
-      : partner == null
-      ? 'Wait for the hearing participant to join before sending.'
       : null;
 
   @override
@@ -196,13 +209,18 @@ final class RoomSessionController extends ChangeNotifier
       _socket = channel;
       await channel.ready.timeout(const Duration(seconds: 10));
       if (_socket != channel || _disposed) return;
-      channel.sink.add(
-        jsonEncode(<String, dynamic>{
-          'type': 'authenticate',
-          'event_schema_version': '1.0',
-          'token': current.token,
-        }),
+      final authentication = <String, dynamic>{
+        'type': 'authenticate',
+        'event_schema_version': '1.0',
+        'token': current.token,
+      };
+      _recordTransport(
+        direction: RoomTransportDirection.frontendToBackend,
+        transport: 'websocket',
+        label: 'authenticate',
+        payload: authentication,
       );
+      channel.sink.add(jsonEncode(authentication));
       _socketSubscription = channel.stream.listen(
         _onSocketData,
         onError: _onSocketError,
@@ -211,7 +229,14 @@ final class RoomSessionController extends ChangeNotifier
       );
       _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
         if (_socket == channel && isConnected) {
-          channel.sink.add(jsonEncode(const <String, dynamic>{'type': 'ping'}));
+          const ping = <String, dynamic>{'type': 'ping'};
+          _recordTransport(
+            direction: RoomTransportDirection.frontendToBackend,
+            transport: 'websocket',
+            label: 'ping',
+            payload: ping,
+          );
+          channel.sink.add(jsonEncode(ping));
         }
       });
     } on Object catch (failure) {
@@ -386,6 +411,12 @@ final class RoomSessionController extends ChangeNotifier
     _socket?.sink.add(
       jsonEncode(<String, dynamic>{'type': 'activity', 'state': state}),
     );
+    _recordTransport(
+      direction: RoomTransportDirection.frontendToBackend,
+      transport: 'websocket',
+      label: 'activity',
+      payload: <String, dynamic>{'type': 'activity', 'state': state},
+    );
   }
 
   Future<void> end() async {
@@ -419,6 +450,12 @@ final class RoomSessionController extends ChangeNotifier
   void _onSocketData(dynamic data) {
     try {
       final event = decodeRoomObject(data as String);
+      _recordTransport(
+        direction: RoomTransportDirection.backendToFrontend,
+        transport: 'websocket',
+        label: event['type'] as String? ?? 'event',
+        payload: event,
+      );
       if (event['event_schema_version'] != '1.0') {
         throw const FormatException('Unsupported room event schema');
       }
@@ -615,8 +652,14 @@ final class RoomSessionController extends ChangeNotifier
         'authorization': 'Bearer ${_requireCredentials().token}',
     };
     late http.Response response;
+    final uri = config.http(path);
+    _recordTransport(
+      direction: RoomTransportDirection.frontendToBackend,
+      transport: 'http',
+      label: '$method $path',
+      payload: <String, dynamic>{'method': method, 'path': path, 'body': ?body},
+    );
     try {
-      final uri = config.http(path);
       response = switch (method) {
         'POST' =>
           await _http
@@ -632,18 +675,39 @@ final class RoomSessionController extends ChangeNotifier
               .timeout(const Duration(seconds: 20)),
       };
     } on TimeoutException {
+      _recordTransport(
+        direction: RoomTransportDirection.backendToFrontend,
+        transport: 'http',
+        label: '$method $path · timeout',
+        payload: const <String, dynamic>{'error': 'timeout'},
+      );
       throw const RoomSessionException(
         'timeout',
         'The room did not respond in time.',
         retryable: true,
       );
     } on Object {
+      _recordTransport(
+        direction: RoomTransportDirection.backendToFrontend,
+        transport: 'http',
+        label: '$method $path · unreachable',
+        payload: const <String, dynamic>{'error': 'unreachable'},
+      );
       throw const RoomSessionException(
         'unreachable',
         'The room could not be reached.',
         retryable: true,
       );
     }
+    _recordTransport(
+      direction: RoomTransportDirection.backendToFrontend,
+      transport: 'http',
+      label: '$method $path · HTTP ${response.statusCode}',
+      payload: <String, dynamic>{
+        'status': response.statusCode,
+        'body': _responseBodyForTrace(response.body),
+      },
+    );
     if (!acceptedStatuses.contains(response.statusCode)) {
       var code = 'http_${response.statusCode}';
       try {
@@ -680,6 +744,27 @@ final class RoomSessionController extends ChangeNotifier
       );
     }
     return current;
+  }
+
+  void _recordTransport({
+    required RoomTransportDirection direction,
+    required String transport,
+    required String label,
+    required Object? payload,
+  }) {
+    const maximumEntries = 24;
+    if (_transportTrace.length >= maximumEntries) {
+      _transportTrace.removeAt(0);
+    }
+    _transportTrace.add(
+      RoomTransportTrace(
+        occurredAt: DateTime.now(),
+        direction: direction,
+        transport: transport,
+        label: label,
+        payload: _redactTransportPayload(payload),
+      ),
+    );
   }
 
   void _persist() {
@@ -731,6 +816,71 @@ final class RoomSessionController extends ChangeNotifier
     if (_ownsHttp) _http.close();
     super.dispose();
   }
+}
+
+/// A trace entry rendered in the optional in-app transport inspector. Entries
+/// are deliberately short-lived: [RoomSessionController] keeps only the most
+/// recent 24 in memory and does not persist them with room credentials.
+final class RoomTransportTrace {
+  const RoomTransportTrace({
+    required this.occurredAt,
+    required this.direction,
+    required this.transport,
+    required this.label,
+    required this.payload,
+  });
+
+  final DateTime occurredAt;
+  final RoomTransportDirection direction;
+  final String transport;
+  final String label;
+  final Object? payload;
+
+  String get formattedPayload =>
+      const JsonEncoder.withIndent('  ').convert(payload);
+}
+
+enum RoomTransportDirection { frontendToBackend, backendToFrontend }
+
+Object? _responseBodyForTrace(String responseBody) {
+  if (responseBody.isEmpty) return null;
+  try {
+    return jsonDecode(responseBody);
+  } on FormatException {
+    return responseBody;
+  }
+}
+
+Object? _redactTransportPayload(Object? value, {String? fieldName}) {
+  final normalizedName = fieldName?.toLowerCase() ?? '';
+  if (normalizedName.contains('token') ||
+      normalizedName.contains('authorization') ||
+      normalizedName.contains('capability') ||
+      normalizedName.contains('secret')) {
+    return '[redacted]';
+  }
+  if (value is Map) {
+    return Map<String, Object?>.unmodifiable(
+      Map<String, Object?>.fromEntries(
+        value.entries.map((entry) {
+          final key = entry.key.toString();
+          return MapEntry<String, Object?>(
+            key,
+            _redactTransportPayload(entry.value, fieldName: key),
+          );
+        }),
+      ),
+    );
+  }
+  if (value is Iterable) {
+    return List<Object?>.unmodifiable(
+      value.map((item) => _redactTransportPayload(item)),
+    );
+  }
+  if (value is String && value.length > 4000) {
+    return '${value.substring(0, 4000)}… [truncated]';
+  }
+  return value;
 }
 
 final class RoomSessionException implements Exception {

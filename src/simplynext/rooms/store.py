@@ -322,7 +322,10 @@ class RoomStore:
     ) -> Admission:
         """Caller holds lock; replay precedes rate, pending and capacity gates."""
         self.require_participant(room, participant)
-        if room.state != "active":
+        # A newly created signer room may be used as a solo local test before
+        # its hearing participant joins. It remains private and is still
+        # authenticated; joining later promotes the same room to active.
+        if room.state not in {"waiting", "active"}:
             raise RoomFailure(409, "room_not_active")
         is_sign = isinstance(request, TranslatedSignUtteranceV1)
         if is_sign and participant.role != "signer":
@@ -407,7 +410,7 @@ class RoomStore:
         outcome: TerminalOutcome,
     ) -> bool:
         """Exactly one terminal commit; stale or ended work cannot recreate state."""
-        if room.state != "active" or self.rooms.get(room.code) is not room:
+        if room.state not in {"waiting", "active"} or self.rooms.get(room.code) is not room:
             return False
         if self.expired(room):
             self.erase(room)

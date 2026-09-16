@@ -43,6 +43,9 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("PORT", "SIMPLYNEXT_PORT"),
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # Local-demo only: prints finalized room messages and response summaries.
+    # It never enables perception/camera payload logging.
+    transport_trace_enabled: bool = False
     api_prefix: str = "/v1"
     allowed_origins: Annotated[tuple[str, ...], NoDecode] = ()
     allowed_hosts: Annotated[tuple[str, ...], NoDecode] = (
@@ -238,6 +241,8 @@ class Settings(BaseSettings):
             raise ValueError("allowed_hosts must be exact in production")
         if self.environment == "production" and self.log_level == "DEBUG":
             raise ValueError("DEBUG logging is prohibited in production")
+        if self.environment == "production" and self.transport_trace_enabled:
+            raise ValueError("transport tracing is prohibited in production")
         if (
             self.environment == "production"
             and self.anthropic_enabled

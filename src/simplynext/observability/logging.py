@@ -25,6 +25,9 @@ class JsonFormatter(logging.Formatter):
             payload["exception_type"] = (
                 record.exc_info[0].__name__ if record.exc_info[0] else "unknown"
             )
+        trace = getattr(record, "room_transport", None)
+        if trace is not None:
+            payload["room_transport"] = trace
         return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 

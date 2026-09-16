@@ -1589,6 +1589,8 @@ class LiveTranslatorScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
+          _GestureShortcutSetupCard(controller: controller),
+          const SizedBox(height: 18),
           _TranslatedUtteranceCard(controller: controller),
           const SizedBox(height: 18),
           _SpeechCaptionCard(controller: controller),
@@ -1596,6 +1598,155 @@ class LiveTranslatorScreen extends StatelessWidget {
           _ActionDock(controller: controller),
         ],
       ),
+    );
+  }
+}
+
+class _GestureShortcutSetupCard extends StatelessWidget {
+  const _GestureShortcutSetupCard({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = <String>[];
+    final seen = <String>{};
+    for (final sign in controller.customSigns) {
+      if (!sign.hasEnoughSamples ||
+          sign.language.toUpperCase() !=
+              controller.selectedLanguage.trim().toUpperCase() ||
+          !seen.add(sign.label.trim().toLowerCase())) {
+        continue;
+      }
+      labels.add(sign.label);
+    }
+    return GlassCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(Icons.gesture_outlined, color: _cyan, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'GESTURE SHORTCUTS · OPTIONAL',
+                style: TextStyle(
+                  color: _cyan,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            labels.isEmpty
+                ? 'Before signing, add a personal sign in My signs if you want hands-free controls. Your chosen action signs stay on this device.'
+                : 'Before signing, optionally choose one saved personal sign for each action. A possible word is offered for review at any confidence, including 1%.',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.4),
+          ),
+          if (labels.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            _GestureShortcutPicker(
+              controller: controller,
+              labels: labels,
+              shortcut: PersonalSignShortcut.addPossibleWord,
+              label: 'Add possible word',
+              helper:
+                  'Adds the current low-confidence suggestion to the sentence.',
+              icon: Icons.playlist_add,
+            ),
+            const SizedBox(height: 10),
+            _GestureShortcutPicker(
+              controller: controller,
+              labels: labels,
+              shortcut: PersonalSignShortcut.deleteLastWord,
+              label: 'Delete latest word',
+              helper: 'Removes the newest word in the sentence buffer.',
+              icon: Icons.backspace_outlined,
+            ),
+            const SizedBox(height: 10),
+            _GestureShortcutPicker(
+              controller: controller,
+              labels: labels,
+              shortcut: PersonalSignShortcut.sendSentence,
+              label: 'Send sentence',
+              helper: 'Sends only the words already in the sentence buffer.',
+              icon: Icons.send_outlined,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GestureShortcutPicker extends StatelessWidget {
+  const _GestureShortcutPicker({
+    required this.controller,
+    required this.labels,
+    required this.shortcut,
+    required this.label,
+    required this.helper,
+    required this.icon,
+  });
+
+  final AppController controller;
+  final List<String> labels;
+  final PersonalSignShortcut shortcut;
+  final String label;
+  final String helper;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = controller.shortcutLabelFor(shortcut);
+    final selectedValue =
+        labels.any((value) => value.toLowerCase() == selected?.toLowerCase())
+        ? selected!
+        : '';
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(top: 13),
+          child: Icon(icon, color: _yellow, size: 18),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            key: ValueKey<String>(
+              'gesture-shortcut-${shortcut.storageKey}-$selectedValue',
+            ),
+            initialValue: selectedValue,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: label,
+              helperText: helper,
+              helperStyle: const TextStyle(fontSize: 10),
+            ),
+            items: <DropdownMenuItem<String>>[
+              const DropdownMenuItem<String>(
+                value: '',
+                child: Text('Off · use the on-screen button'),
+              ),
+              ...labels.map(
+                (value) =>
+                    DropdownMenuItem<String>(value: value, child: Text(value)),
+              ),
+            ],
+            onChanged: (value) => unawaited(
+              controller.setPersonalSignShortcut(
+                shortcut,
+                value == null || value.isEmpty ? null : value,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1679,13 +1830,15 @@ class _TranslatedUtteranceCard extends StatelessWidget {
     final retry = controller.hasPendingUtteranceRetry;
     final sending = controller.isUtteranceSubmissionInFlight;
     final roomConfigured = controller.isUtteranceSubmissionConfigured;
+    final pendingWords = controller.pendingTranslatedWords;
+    final pendingConfidence = controller.pendingTranslatedWordConfidence;
     final actionLabel = sending
         ? 'Submitting…'
         : retry
         ? 'Retry final utterance'
         : wordCount == 0
-        ? 'Send signed message'
-        : 'Send $wordCount signed word${wordCount == 1 ? '' : 's'}';
+        ? 'Send sentence'
+        : 'Send sentence ($wordCount word${wordCount == 1 ? '' : 's'})';
 
     return GlassCard(
       padding: const EdgeInsets.all(15),
@@ -1722,11 +1875,80 @@ class _TranslatedUtteranceCard extends StatelessWidget {
             retry
                 ? 'The final packet is retained unchanged until its acknowledgement arrives.'
                 : roomConfigured
-                ? 'Each pause finishes one sign. Review the accumulated words, then send the complete message once.'
+                ? 'Each pause finishes one sign. Review the accumulated words, then send the complete sentence when you are ready.'
                 : 'Recognised words stay on this device. Configure a room before it can send the completed utterance.',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.4),
           ),
           const SizedBox(height: 12),
+          if (pendingWords.isNotEmpty && !retry) ...<Widget>[
+            Container(
+              key: const ValueKey<String>('pending-translated-words-review'),
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _yellow.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: _yellow.withValues(alpha: .35)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'REVIEW POSSIBLE WORD',
+                    style: TextStyle(
+                      color: _yellow,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${pendingWords.join(' ')}${pendingConfidence == null ? '' : ' · ${(pendingConfidence * 100).round()}% confidence'}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Signing another word ignores this suggestion.',
+                    style: TextStyle(color: _muted, fontSize: 10),
+                  ),
+                  const SizedBox(height: 7),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      FilledButton.icon(
+                        key: const ValueKey<String>(
+                          'add-pending-translated-words',
+                        ),
+                        onPressed: controller.addPendingTranslatedWords,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Add to sentence'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _yellow,
+                          foregroundColor: _background,
+                        ),
+                      ),
+                      TextButton.icon(
+                        key: const ValueKey<String>(
+                          'discard-pending-translated-words',
+                        ),
+                        onPressed: controller.discardPendingTranslatedWords,
+                        icon: const Icon(Icons.close, size: 16),
+                        label: const Text('Ignore'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Container(
             key: const ValueKey<String>('translated-utterance-buffer'),
             width: double.infinity,
@@ -1741,28 +1963,31 @@ class _TranslatedUtteranceCard extends StatelessWidget {
                 ? const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Sign one or more words to build an utterance.',
+                      'Add recognised words to build a sentence.',
                       style: TextStyle(color: _subtle, fontSize: 11),
                     ),
                   )
                 : Wrap(
                     spacing: 7,
                     runSpacing: 6,
-                    children: words
-                        .map(
-                          (word) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _cyan.withValues(alpha: .10),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: _cyan.withValues(alpha: .28),
-                              ),
-                            ),
-                            child: Text(
+                    children: List<Widget>.generate(words.length, (index) {
+                      final word = words[index];
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _cyan.withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _cyan.withValues(alpha: .28),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
                               word,
                               style: const TextStyle(
                                 color: Colors.white,
@@ -1771,9 +1996,30 @@ class _TranslatedUtteranceCard extends StatelessWidget {
                                 fontFamily: 'monospace',
                               ),
                             ),
-                          ),
-                        )
-                        .toList(growable: false),
+                            if (controller
+                                .canClearTranslatedUtterance) ...<Widget>[
+                              const SizedBox(width: 3),
+                              IconButton(
+                                key: ValueKey<String>(
+                                  'remove-translated-word-$index',
+                                ),
+                                onPressed: () =>
+                                    controller.removeTranslatedWordAt(index),
+                                icon: const Icon(Icons.close, size: 14),
+                                color: _cyan,
+                                tooltip: 'Remove $word',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 22,
+                                  minHeight: 22,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
                   ),
           ),
           const SizedBox(height: 12),
@@ -1805,8 +2051,8 @@ class _TranslatedUtteranceCard extends StatelessWidget {
                   onPressed: controller.canClearTranslatedUtterance
                       ? controller.clearCaption
                       : null,
-                  icon: const Icon(Icons.cleaning_services_outlined, size: 17),
-                  label: const Text('Reset words'),
+                  icon: const Icon(Icons.clear_all_outlined, size: 17),
+                  label: const Text('Clear sentence'),
                 ),
               ),
               if (words.isNotEmpty)
@@ -1847,7 +2093,7 @@ class _TranslatedUtteranceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               const Text(
-                'This is the payload for Send signs. Camera frames, landmarks, room code, and participant credentials are not included.',
+                'This is the payload for Send sentence. Camera frames, landmarks, room code, and participant credentials are not included.',
                 style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
               ),
               const SizedBox(height: 10),

@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_controller.dart';
@@ -2599,10 +2600,21 @@ class DictionaryScreen extends StatelessWidget {
     eyebrow: 'Personal vocabulary',
     title: 'My signs',
     subtitle: 'Teach SignBridge the words that matter to you.',
-    action: PrimaryButton(
-      label: 'Add custom sign',
-      icon: Icons.add,
-      onPressed: () => _openFlow(context),
+    action: Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      children: <Widget>[
+        OutlineButton(
+          label: 'Back up / restore',
+          icon: Icons.save_alt_outlined,
+          onPressed: () => _showBackupDialog(context),
+        ),
+        PrimaryButton(
+          label: 'Add custom sign',
+          icon: Icons.add,
+          onPressed: () => _openFlow(context),
+        ),
+      ],
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2684,6 +2696,112 @@ class DictionaryScreen extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showBackupDialog(BuildContext context) async {
+    final importController = TextEditingController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          String? error;
+          var copied = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Back up personal signs'),
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        'Your signs already persist in this browser. Copy a backup before clearing browser data or moving to another device. Landmark templates stay private and are never sent to the backend.',
+                        style: TextStyle(
+                          color: _muted,
+                          fontSize: 12,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      FilledButton.icon(
+                        onPressed: controller.customSigns.isEmpty
+                            ? null
+                            : () async {
+                                await Clipboard.setData(
+                                  ClipboardData(
+                                    text: controller.exportCustomSignsBackup(),
+                                  ),
+                                );
+                                if (dialogContext.mounted) {
+                                  setDialogState(() => copied = true);
+                                }
+                              },
+                        icon: const Icon(Icons.copy_outlined),
+                        label: Text(copied ? 'Backup copied' : 'Copy backup'),
+                      ),
+                      const SizedBox(height: 20),
+                      const _Eyebrow('Restore a backup'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: importController,
+                        minLines: 5,
+                        maxLines: 9,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: const InputDecoration(
+                          hintText:
+                              'Paste a SignBridge personal-sign backup here',
+                        ),
+                      ),
+                      if (error != null) ...<Widget>[
+                        const SizedBox(height: 8),
+                        Text(
+                          error!,
+                          style: const TextStyle(color: _red, fontSize: 11),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    try {
+                      final result = await controller.restoreCustomSignsBackup(
+                        importController.text,
+                      );
+                      if (!dialogContext.mounted) return;
+                      Navigator.of(dialogContext).pop();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Restored ${result.restored} personal sign${result.restored == 1 ? '' : 's'} (${result.added} added, ${result.replaced} updated).',
+                            ),
+                          ),
+                        );
+                      }
+                    } on FormatException catch (failure) {
+                      setDialogState(() => error = failure.message);
+                    }
+                  },
+                  child: const Text('Restore'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      importController.dispose();
+    }
+  }
 }
 
 class _SignCard extends StatelessWidget {
@@ -2715,7 +2833,7 @@ class _SignCard extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: Text(
-                '${sign.language} · ${sign.sampleCount}/5 recordings',
+                '${sign.language} · ${sign.sampleCount} recordings',
                 style: const TextStyle(color: _muted, fontSize: 11),
               ),
             ),
@@ -2732,7 +2850,7 @@ class _SignCard extends StatelessWidget {
         const SizedBox(height: 9),
         Text(
           sign.hasEnoughSamples
-              ? 'Landmark motion templates stored for on-device matching.'
+              ? 'Landmark motion templates stored for on-device matching. Record the same name again to add more examples.'
               : 'More live samples are needed before recognition.',
           style: const TextStyle(color: _subtle, fontSize: 10, height: 1.4),
         ),
@@ -2912,7 +3030,7 @@ class _CustomSignFlowScreenState extends State<CustomSignFlowScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'This is personal vocabulary, not an official sign-language dictionary entry. Five landmark recordings stay on this device and are used for local matching.',
+                    'This is personal vocabulary, not an official sign-language dictionary entry. Five landmark recordings stay on this device and are used for local matching. To improve a sign later, record five more samples using the exact same name.',
                     style: TextStyle(color: _muted, fontSize: 13, height: 1.5),
                   ),
                   const SizedBox(height: 22),

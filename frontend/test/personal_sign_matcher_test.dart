@@ -74,6 +74,49 @@ void main() {
     );
   });
 
+  test('treats duplicate labels as more examples of one personal sign', () {
+    final sequence = _sequence(12, offset: .10);
+    final first = _sign('kopi', sequence);
+    final second = _sign('KOPI', sequence);
+
+    final match = matcher.match(
+      sequence: sequence,
+      signs: <CustomSign>[first, second],
+      language: 'SgSL',
+    );
+
+    expect(match?.label, 'kopi');
+    expect(match?.sampleCount, 10);
+  });
+
+  test('requires a consensus instead of trusting one outlier recording', () {
+    final stable = _sequence(12, offset: .10);
+    final outlier = _sequence(12, offset: .70);
+    final sign = CustomSign(
+      label: 'kopi',
+      samples: <List<double>>[
+        stable[6],
+        stable[6],
+        stable[6],
+        stable[6],
+        outlier[6],
+      ],
+      sequences: <List<List<double>>>[stable, stable, stable, stable, outlier],
+      createdAt: DateTime.utc(2026),
+      language: 'SgSL',
+      vectorSize: 170,
+    );
+
+    expect(
+      matcher.match(
+        sequence: outlier,
+        signs: <CustomSign>[sign],
+        language: 'SgSL',
+      ),
+      isNull,
+    );
+  });
+
   test('keeps legacy snapshots usable as one-frame templates', () {
     final legacy = CustomSign(
       label: 'home',

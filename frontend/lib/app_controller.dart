@@ -43,6 +43,20 @@ enum PersonalSignShortcut {
   final String storageKey;
 }
 
+/// The result of merging a user-controlled personal-sign backup into the
+/// current device. A sign with the same label and language is replaced so a
+/// newer recording can restore or improve an existing one.
+class CustomSignBackupRestoreResult {
+  const CustomSignBackupRestoreResult({
+    required this.added,
+    required this.replaced,
+  });
+
+  final int added;
+  final int replaced;
+  int get restored => added + replaced;
+}
+
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// The recognizer can be useful below its normal high-confidence range, but
   /// those words require the signer to explicitly include or ignore them.
@@ -122,6 +136,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   bool get hasTranslatedWords => _utteranceWords.isNotEmpty;
   bool get isUtteranceSubmissionConfigured => _utteranceSubmission.isConfigured;
   bool get isUtteranceSubmissionInFlight => _utteranceSubmissionInFlight;
+
   /// A submission whose HTTP acknowledgement has not arrived yet. The payload
   /// stays stable internally so a later manual send cannot create a duplicate.
   bool get hasPendingUtteranceSubmission => _pendingUtterance != null;
@@ -508,8 +523,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void setLanguage(String language) {
     if (selectedLanguage != language) {
       if (_pendingUtterance != null) {
-        backendStatus =
-            'The current sentence is still being sent. Send it before switching sign languages';
+        backendStatus = 'The current sentence is still being sent. Send it before switching sign languages';
         notifyListeners();
         return;
       }
@@ -765,8 +779,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final acceptedResult = result.isRecognized ? result : reviewableResult!;
     final word = acceptedResult.word!;
     if (_pendingUtterance != null) {
-      backendStatus =
-          'The current sentence is still being sent · wait for Send sentence to finish';
+      backendStatus = 'The current sentence is still being sent · wait for Send sentence to finish';
       return;
     }
     try {
@@ -1243,27 +1256,85 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     List<List<List<double>>> sequences,
   ) async {
     final frame = latestFrame;
-    final samples = sequences
-        .where((sequence) => sequence.isNotEmpty)
+    final normalizedLabel = label.trim();
+    final matchingSigns = customSigns
+        .where(
+          (sign) =>
+              sign.language.toUpperCase() == selectedLanguage.toUpperCase() &&
+              sign.label.trim().toLowerCase() == normalizedLabel.toLowerCase(),
+        )
+        .toList(growable: false);
+    final combinedSequences = <List<List<double>>>[
+      for (final sign in matchingSigns) ...sign.templateSequences,
+      ...sequences.where((sequence) => sequence.isNotEmpty),
+    ];
+    // More examples improve recognition, but a bounded recent set keeps
+    // matching responsive and avoids unbounded browser storage growth.
+    const maximumExamples = 20;
+    final retainedSequences = combinedSequences.length <= maximumExamples
+        ? combinedSequences
+        : combinedSequences.sublist(combinedSequences.length - maximumExamples);
+    final samples = retainedSequences
         .map(
           (sequence) =>
               List<double>.unmodifiable(sequence[sequence.length ~/ 2]),
         )
         .toList(growable: false);
     final sign = CustomSign(
-      label: label,
+      label: normalizedLabel,
       samples: samples,
-      sequences: sequences,
-      createdAt: DateTime.now(),
+      sequences: retainedSequences,
+      createdAt: matchingSigns.isEmpty
+          ? DateTime.now()
+          : matchingSigns
+                .map((sign) => sign.createdAt)
+                .reduce((first, next) => first.isBefore(next) ? first : next),
       language: selectedLanguage,
       vectorSize: samples.isEmpty ? 0 : samples.first.length,
       coordinateSpace: _coordinateSpace(frame),
       faceSignal: frame?.faceExpression?.label ?? 'not captured',
     );
-    customSigns = <CustomSign>[...customSigns, sign];
+    customSigns = <CustomSign>[
+      ...customSigns.where((existing) => !matchingSigns.contains(existing)),
+      sign,
+    ];
     await _localState.saveCustomSigns(customSigns);
+    backendStatus = matchingSigns.isEmpty
+        ? '$normalizedLabel saved with ${sign.sampleCount} examples'
+        : '$normalizedLabel improved with ${sign.sampleCount} examples';
     notifyListeners();
   }
+
+  /// A portable JSON copy of the local-only personal-sign templates. It never
+  /// appears in a room message or leaves the browser without an explicit user
+  /// action such as copy/paste.
+  String exportCustomSignsBackup() =>
+      _localState.exportCustomSignsBackup(customSigns);
+
+  Future<CustomSignBackupRestoreResult> restoreCustomSignsBackup(
+    String encoded,
+  ) async {
+    final incoming = _localState.decodeCustomSignsBackup(encoded);
+    final incomingByKey = <String, CustomSign>{
+      for (final sign in incoming) _customSignBackupKey(sign): sign,
+    };
+    final existingKeys = customSigns.map(_customSignBackupKey).toSet();
+    final replaced = incomingByKey.keys.where(existingKeys.contains).length;
+    final added = incomingByKey.length - replaced;
+    final merged = <CustomSign>[];
+    for (final existing in customSigns) {
+      final replacement = incomingByKey.remove(_customSignBackupKey(existing));
+      merged.add(replacement ?? existing);
+    }
+    merged.addAll(incomingByKey.values);
+    customSigns = merged;
+    await _localState.saveCustomSigns(customSigns);
+    notifyListeners();
+    return CustomSignBackupRestoreResult(added: added, replaced: replaced);
+  }
+
+  String _customSignBackupKey(CustomSign sign) =>
+      '${sign.language.trim().toUpperCase()}\u0000${sign.label.trim().toLowerCase()}';
 
   Future<void> setPersonalSignShortcut(
     PersonalSignShortcut shortcut,

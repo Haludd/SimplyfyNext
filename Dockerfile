@@ -69,10 +69,13 @@ RUN groupadd --system --gid 10001 simplynext \
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=simplynext:simplynext data/word_templates.example.json /app/data/word_templates.example.json
 COPY scripts/production_preflight.py /app/ops/production_preflight.py
+COPY --chmod=755 docker/entrypoint.sh /app/ops/entrypoint.sh
 
-USER simplynext
 EXPOSE 8000
 
-# Railway injects PORT at runtime.  The application reads it with precedence over
-# SIMPLYNEXT_PORT and always runs one Uvicorn worker.
-ENTRYPOINT ["simplynext-api"]
+# Railway remounts the persistent volume root-owned on every container start, so the
+# container must still start as root. entrypoint.sh re-chowns the volume and then
+# drops to the unprivileged simplynext user via setpriv before exec'ing the app;
+# Railway injects PORT at runtime, which the application reads with precedence over
+# SIMPLYNEXT_PORT, and always runs one Uvicorn worker.
+ENTRYPOINT ["/app/ops/entrypoint.sh", "simplynext-api"]

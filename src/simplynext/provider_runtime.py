@@ -27,7 +27,11 @@ def build_provider_client(
         path = settings.provider_spend_journal_path
         if path is None or not path.is_file():
             raise ValueError(
-                "provision or recover deployment spend journal before provider startup"
+                "provision or recover deployment spend journal before provider startup. "
+                "For initial hosted verification, set SIMPLYNEXT_ANTHROPIC_ENABLED=false "
+                "and SIMPLYNEXT_BEDROCK_ENABLED=false (see deploy/production.env.example). "
+                "To enable a provider, mount a persistent volume at /app/spend with "
+                "usage.json provisioned."
             )
     if settings.bedrock_enabled:
         preflight_bedrock_access(

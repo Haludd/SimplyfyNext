@@ -1,4 +1,5 @@
 import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Event
@@ -227,3 +228,18 @@ def test_corrupt_or_unwritable_journal_fails_before_dispatch(tmp_path, monkeypat
         reserve(budget)
     assert budget.snapshot().reserved_usd == Decimal("0.0001")
     budget._journal.close()
+
+
+def test_init_spend_journal_provisions_safely_and_refuses_overwrite(tmp_path):
+    from simplynext.spend_journal import init_spend_journal
+
+    path = tmp_path / "usage.json"
+    init_spend_journal(path, charged_usd=Decimal("1.25"))
+    assert path.is_file()
+    assert path.stat().st_mode & 0o777 == 0o600
+    journal = json.loads(path.read_text())
+    assert journal == {"version": 1, "charged_usd": "1.25", "hourly": {}}
+
+    # Refuse to overwrite existing file
+    with pytest.raises(FileExistsError):
+        init_spend_journal(path)

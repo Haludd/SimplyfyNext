@@ -14,10 +14,12 @@ final class PersonalSignMatcher {
     this.maximumDistance = .50,
     this.minimumConfidence = .55,
     this.minimumMargin = .05,
+    this.consensusTemplateCount = 3,
   }) : assert(resampledFrameCount > 1),
        assert(maximumDistance > 0 && maximumDistance <= 1),
        assert(minimumConfidence > 0 && minimumConfidence <= 1),
-       assert(minimumMargin >= 0 && minimumMargin < 1);
+       assert(minimumMargin >= 0 && minimumMargin < 1),
+       assert(consensusTemplateCount > 0);
 
   /// Every recording is converted to this number of evenly-spaced landmark
   /// frames, so a sign performed at a different speed remains comparable.
@@ -31,6 +33,10 @@ final class PersonalSignMatcher {
   final double minimumConfidence;
   final double minimumMargin;
 
+  /// A single lucky recording should not decide recognition. The matcher uses
+  /// the closest few examples as a small personal-sign consensus instead.
+  final int consensusTemplateCount;
+
   PersonalSignMatch? match({
     required List<List<double>> sequence,
     required List<CustomSign> signs,
@@ -39,31 +45,44 @@ final class PersonalSignMatcher {
     final candidate = resample(sequence);
     if (candidate == null) return null;
 
-    final matches = <PersonalSignMatch>[];
+    final templatesByLabel = <String, List<List<List<double>>>>{};
+    final displayLabelByKey = <String, String>{};
     for (final sign in signs) {
       if (!sign.hasEnoughSamples ||
           sign.language.toUpperCase() != language.trim().toUpperCase()) {
         continue;
       }
-      final templateDistances = sign.templateSequences
+      final key = sign.label.trim().toLowerCase();
+      if (key.isEmpty) continue;
+      displayLabelByKey.putIfAbsent(key, () => sign.label.trim());
+      templatesByLabel
+          .putIfAbsent(key, () => <List<List<double>>>[])
+          .addAll(sign.templateSequences);
+    }
+
+    final matches = <PersonalSignMatch>[];
+    for (final entry in templatesByLabel.entries) {
+      final templateDistances = entry.value
           .map(resample)
           .whereType<List<List<double>>>()
-          .map((template) => _distance(candidate, template))
+          .map((template) => _dynamicTimeWarpDistance(candidate, template))
           .whereType<double>()
           .toList(growable: false);
       if (templateDistances.isEmpty) continue;
-      final distance = templateDistances.reduce(
-        (left, right) => left < right ? left : right,
-      );
+      templateDistances.sort();
+      final count = math.min(consensusTemplateCount, templateDistances.length);
+      final distance =
+          templateDistances.take(count).reduce((left, right) => left + right) /
+          count;
       final confidence = (1 - distance / maximumDistance)
           .clamp(0.0, 1.0)
           .toDouble();
       matches.add(
         PersonalSignMatch(
-          label: sign.label,
+          label: displayLabelByKey[entry.key]!,
           confidence: confidence,
           distance: distance,
-          sampleCount: sign.sampleCount,
+          sampleCount: entry.value.length,
         ),
       );
     }
@@ -114,7 +133,10 @@ final class PersonalSignMatcher {
     }, growable: false);
   }
 
-  double? _distance(List<List<double>> left, List<List<double>> right) {
+  double? _dynamicTimeWarpDistance(
+    List<List<double>> left,
+    List<List<double>> right,
+  ) {
     if (left.length != right.length || left.isEmpty) return null;
     final width = math.min(left.first.length, right.first.length);
     // Hands (126 values) and torso pose (44 values) are stable, useful
@@ -126,21 +148,40 @@ final class PersonalSignMatcher {
         right.any((frame) => frame.length < comparedWidth)) {
       return null;
     }
-    var total = 0.0;
-    var count = 0;
-    for (var frameIndex = 0; frameIndex < left.length; frameIndex += 1) {
-      for (
-        var featureIndex = 0;
-        featureIndex < comparedWidth;
-        featureIndex += 1
-      ) {
-        final delta =
-            left[frameIndex][featureIndex] - right[frameIndex][featureIndex];
-        total += delta * delta;
-        count += 1;
+    final rows = left.length;
+    final columns = right.length;
+    var previousCosts = List<double>.filled(columns + 1, double.infinity);
+    var previousSteps = List<int>.filled(columns + 1, 0);
+    previousCosts[0] = 0;
+    for (var row = 1; row <= rows; row += 1) {
+      final currentCosts = List<double>.filled(columns + 1, double.infinity);
+      final currentSteps = List<int>.filled(columns + 1, 0);
+      for (var column = 1; column <= columns; column += 1) {
+        final alternatives = <(double, int)>[
+          (previousCosts[column - 1], previousSteps[column - 1]),
+          (previousCosts[column], previousSteps[column]),
+          (currentCosts[column - 1], currentSteps[column - 1]),
+        ]..sort((left, right) => left.$1.compareTo(right.$1));
+        final previous = alternatives.first;
+        currentCosts[column] =
+            previous.$1 +
+            _frameDistance(left[row - 1], right[column - 1], comparedWidth);
+        currentSteps[column] = previous.$2 + 1;
       }
+      previousCosts = currentCosts;
+      previousSteps = currentSteps;
     }
-    return count == 0 ? null : math.sqrt(total / count);
+    final steps = previousSteps[columns];
+    return steps == 0 ? null : previousCosts[columns] / steps;
+  }
+
+  double _frameDistance(List<double> left, List<double> right, int width) {
+    var total = 0.0;
+    for (var featureIndex = 0; featureIndex < width; featureIndex += 1) {
+      final delta = left[featureIndex] - right[featureIndex];
+      total += delta * delta;
+    }
+    return math.sqrt(total / width);
   }
 
   bool _isFinite(List<double> frame) => frame.every((value) => value.isFinite);

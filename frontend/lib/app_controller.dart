@@ -32,7 +32,36 @@ enum SignBridgePage { onboarding, live, dictionary, settings }
 
 enum ViewMode { raw, wireframe, clean }
 
+/// An optional local action that the signer maps to one of their recorded
+/// personal signs. The chosen label never leaves this device.
+enum PersonalSignShortcut {
+  addPossibleWord('add_possible_word'),
+  deleteLastWord('delete_last_word'),
+  sendSentence('send_sentence');
+
+  const PersonalSignShortcut(this.storageKey);
+  final String storageKey;
+}
+
+/// The result of merging a user-controlled personal-sign backup into the
+/// current device. A sign with the same label and language is replaced so a
+/// newer recording can restore or improve an existing one.
+class CustomSignBackupRestoreResult {
+  const CustomSignBackupRestoreResult({
+    required this.added,
+    required this.replaced,
+  });
+
+  final int added;
+  final int replaced;
+  int get restored => added + replaced;
+}
+
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
+  /// The recognizer can be useful below its normal high-confidence range, but
+  /// those words require the signer to explicitly include or ignore them.
+  static const double _manualReviewConfidenceThreshold = .75;
+
   AppController(
     this._localState,
     this.tracking,
@@ -42,7 +71,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     AslRecognizerBridge? aslRecognizer,
     TranslatedSignUtteranceGateway? utteranceSubmission,
     String Function()? messageIdGenerator,
-    this.utteranceIdleTimeout = const Duration(milliseconds: 1500),
   }) : speechToText = speechToText ?? SpeechToTextService(),
        textToSpeech = textToSpeech ?? TextToSpeechService(),
        _aslRecognizer = aslRecognizer ?? AslRecognizerBridge(),
@@ -50,15 +78,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
            utteranceSubmission ??
            TranslatedSignUtteranceSubmissionService.fromEnvironment(),
        _messageIdGenerator = messageIdGenerator ?? _newUuidV4 {
-    if (utteranceIdleTimeout <= Duration.zero) {
-      throw ArgumentError.value(
-        utteranceIdleTimeout,
-        'utteranceIdleTimeout',
-        'must be positive',
-      );
-    }
     backendStatus =
-        'Local recognition · words stay on this device until Translate';
+        'Local recognition · words stay on this device until Send sentence';
     _trackingSubscription = tracking.frames.listen(_onTrackingFrame);
     this.speechToText.addListener(_onSpeechToTextChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -73,7 +94,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   final AslRecognizerBridge _aslRecognizer;
   final TranslatedSignUtteranceGateway _utteranceSubmission;
   final String Function() _messageIdGenerator;
-  final Duration utteranceIdleTimeout;
   final SignAnalysisService signAnalyzer = SignAnalysisService();
   final SimulatedSignSequenceApiClient simulator =
       SimulatedSignSequenceApiClient();
@@ -84,7 +104,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   late final StreamSubscription<LandmarkFrame> _trackingSubscription;
   Timer? _frameNotifyTimer;
-  Timer? _utteranceIdleTimer;
   SignBridgePage page = SignBridgePage.onboarding;
   ViewMode viewMode = ViewMode.wireframe;
   int calibrationStep = 1;
@@ -99,8 +118,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// complete utterance. They are never sent one sign at a time.
   final List<_BufferedTranslatedWord> _utteranceWords =
       <_BufferedTranslatedWord>[];
+  _PendingTranslatedWords? _pendingTranslatedWords;
   TranslatedSignUtterance? _pendingUtterance;
   String? _draftMessageId;
+  String? _addPossibleWordShortcutLabel;
+  String? _deleteLastWordShortcutLabel;
+  String? _sendSentenceShortcutLabel;
   bool _utteranceSubmissionInFlight = false;
 
   List<String> get translatedWords =>
@@ -113,21 +136,28 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   bool get hasTranslatedWords => _utteranceWords.isNotEmpty;
   bool get isUtteranceSubmissionConfigured => _utteranceSubmission.isConfigured;
   bool get isUtteranceSubmissionInFlight => _utteranceSubmissionInFlight;
-  bool get hasPendingUtteranceRetry => _pendingUtterance != null;
+
+  /// A submission whose HTTP acknowledgement has not arrived yet. The payload
+  /// stays stable internally so a later manual send cannot create a duplicate.
+  bool get hasPendingUtteranceSubmission => _pendingUtterance != null;
   bool get canCommitTranslatedUtterance =>
       !_utteranceSubmissionInFlight &&
       (_pendingUtterance != null || _utteranceWords.isNotEmpty);
   bool get canClearTranslatedUtterance =>
       _pendingUtterance == null && _utteranceWords.isNotEmpty;
-  String get utteranceIdleTimeoutLabel {
-    final seconds = utteranceIdleTimeout.inMilliseconds / 1000;
-    final value = seconds == seconds.roundToDouble()
-        ? seconds.toStringAsFixed(0)
-        : seconds.toStringAsFixed(1);
-    return '$value second${seconds == 1 ? '' : 's'}';
-  }
+  bool get hasPendingTranslatedWords => _pendingTranslatedWords != null;
+  List<String> get pendingTranslatedWords => List<String>.unmodifiable(
+    _pendingTranslatedWords?.words ?? const <String>[],
+  );
+  double? get pendingTranslatedWordConfidence =>
+      _pendingTranslatedWords?.confidence;
+  String? shortcutLabelFor(PersonalSignShortcut shortcut) => switch (shortcut) {
+    PersonalSignShortcut.addPossibleWord => _addPossibleWordShortcutLabel,
+    PersonalSignShortcut.deleteLastWord => _deleteLastWordShortcutLabel,
+    PersonalSignShortcut.sendSentence => _sendSentenceShortcutLabel,
+  };
 
-  /// JSON that would be sent if the signer presses Translate now. It is safe
+  /// JSON that would be sent if the signer presses Send sentence now. It is safe
   /// to show in the UI: participant credentials are an HTTP header and never
   /// appear in this contract object.
   String? get translatedUtterancePreviewJson {
@@ -193,7 +223,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
-      _cancelUtteranceAutoCommit();
       unawaited(speechToText.stopListening());
       unawaited(textToSpeech.stop());
     }
@@ -220,9 +249,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
       if (tracking.isCapturingSign && !_captureFinishInFlight) {
         final boundaryReached = _signBoundaryDetector.update(frame);
-        if (_signBoundaryDetector.hasObservedActivity) {
-          _cancelUtteranceAutoCommit();
-        }
         if (boundaryReached) {
           unawaited(analyzeSign(automatic: true));
         }
@@ -497,8 +523,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void setLanguage(String language) {
     if (selectedLanguage != language) {
       if (_pendingUtterance != null) {
-        backendStatus =
-            'Retry the final utterance before switching sign languages';
+        backendStatus = 'The current sentence is still being sent. Send it before switching sign languages';
         notifyListeners();
         return;
       }
@@ -506,8 +531,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       unawaited(_aslRecognizer.reset());
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       _signBoundaryDetector.reset();
-      _cancelUtteranceAutoCommit();
       _utteranceWords.clear();
+      _pendingTranslatedWords = null;
       _draftMessageId = null;
     }
     selectedLanguage = language;
@@ -518,6 +543,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     calibrated = await _localState.isCalibrated();
     final savedSigns = await _localState.loadCustomSigns();
     customSigns = savedSigns;
+    final savedShortcuts = await _localState.loadGestureShortcuts();
+    _addPossibleWordShortcutLabel = _matchingCustomSignLabel(
+      savedShortcuts[PersonalSignShortcut.addPossibleWord.storageKey],
+    );
+    _deleteLastWordShortcutLabel = _matchingCustomSignLabel(
+      savedShortcuts[PersonalSignShortcut.deleteLastWord.storageKey],
+    );
+    _sendSentenceShortcutLabel = _matchingCustomSignLabel(
+      savedShortcuts[PersonalSignShortcut.sendSentence.storageKey],
+    );
     if (calibrated) {
       page = SignBridgePage.live;
     }
@@ -670,11 +705,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (result == null) {
           throw StateError('Local ASL classifier unavailable');
         }
-        _acceptLocalRecognition(_preferPersonalSign(result, frames), frames);
+        final personalMatch = _matchPersonalSign(frames);
+        if (await _runPersonalSignShortcut(personalMatch, frames)) return;
+        _dismissPendingForNextSign();
+        _acceptLocalRecognition(
+          _personalSignRecognition(personalMatch, frames) ?? result,
+          frames,
+        );
         return;
       }
       if (useLocalPersonalCapture) {
-        final result = _personalSignRecognition(frames);
+        final personalMatch = _matchPersonalSign(frames);
+        if (await _runPersonalSignShortcut(personalMatch, frames)) return;
+        _dismissPendingForNextSign();
+        final result = _personalSignRecognition(personalMatch, frames);
         if (result == null) {
           backendStatus =
               'No close personal-sign match · repeat the saved sign clearly';
@@ -717,7 +761,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     List<LandmarkFrame> frames,
   ) {
     _setLatestAnalysis(_localAslAnalysis(result));
-    if (!result.isRecognized) {
+    final reviewableResult = _reviewableLowConfidenceResult(result);
+    if (!result.isRecognized && reviewableResult == null) {
       backendStatus = result.status == 'unavailable'
           ? 'Local ASL model unavailable · ${result.detail ?? 'check the browser model assets'}'
           : switch (result.reason) {
@@ -731,45 +776,37 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    final word = result.word!;
+    final acceptedResult = result.isRecognized ? result : reviewableResult!;
+    final word = acceptedResult.word!;
     if (_pendingUtterance != null) {
-      backendStatus =
-          'Final utterance is awaiting retry · no new word was added';
+      backendStatus = 'The current sentence is still being sent · wait for Send sentence to finish';
       return;
     }
     try {
-      final translation = _englishTranslator.translate(result);
-      final producer = _producerFor(result);
-      if (_utteranceWords.length + translation.words.length >
-          TranslatedSignUtteranceContract.maxWords) {
-        backendStatus = 'This utterance already has 64 words · tap Translate before signing more';
+      final translation = _englishTranslator.translate(acceptedResult);
+      final producer = _producerFor(acceptedResult);
+      final candidate = _PendingTranslatedWords(
+        words: translation.words,
+        confidence: acceptedResult.confidence,
+        producer: producer,
+        alternatives: translation.alternatives,
+      );
+      if (acceptedResult.confidence < _manualReviewConfidenceThreshold) {
+        _pendingTranslatedWords = candidate;
+        backendStatus =
+            'Possible ${translation.words.join(' ')} '
+            '(${(acceptedResult.confidence * 100).round()}%) · add it, ignore it, or make the next sign';
         return;
       }
-      _draftMessageId ??= _messageIdGenerator();
-      for (var index = 0; index < translation.words.length; index += 1) {
-        _utteranceWords.add(
-          _BufferedTranslatedWord(
-            word: translation.words[index],
-            confidence: result.confidence,
-            producer: producer,
-            alternatives: index == 0
-                ? translation.alternatives
-                : const <EnglishLabelAlternative>[],
-          ),
-        );
-      }
-      backendStatus = _utteranceSubmission.isConfigured
-          ? 'Captured ${translation.words.join(' ')} · '
-                '${_utteranceWords.length} word${_utteranceWords.length == 1 ? '' : 's'} ready · tap Send signs when the sentence is complete'
-          : 'Captured ${translation.words.join(' ')} locally · '
-                'configure a room to translate the final utterance';
+      _appendTranslatedWords(candidate);
+      backendStatus = _bufferedWordsStatus(translation.words);
     } on ArgumentError {
       backendStatus =
           'Recognized "$word" locally, but its English translation is unsupported';
       return;
     } on TranslatedSignUtteranceValidationException {
       backendStatus =
-          'Recognized personal sign "$word" locally · type it in the conversation to send';
+          'This sentence already has ${TranslatedSignUtteranceContract.maxWords} words · send it or remove a word before adding more';
       return;
     }
     if (audioEnabled) {
@@ -782,40 +819,124 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _scheduleUtteranceAutoCommit() {
-    // Pauses finish one isolated sign, not the full sentence. The signer
-    // explicitly commits the accumulated words so the v1 backend receives
-    // only completion_reason=user_commit and never incurs a call per word.
-    _cancelUtteranceAutoCommit();
+  void addPendingTranslatedWords() {
+    final candidate = _pendingTranslatedWords;
+    if (candidate == null || _pendingUtterance != null) return;
+    try {
+      _appendTranslatedWords(candidate);
+      _pendingTranslatedWords = null;
+      backendStatus = _bufferedWordsStatus(candidate.words);
+    } on TranslatedSignUtteranceValidationException {
+      backendStatus = 'That word cannot be added to this sentence. Remove a word or send the current sentence first.';
+    }
+    notifyListeners();
   }
 
-  void _cancelUtteranceAutoCommit() {
-    _utteranceIdleTimer?.cancel();
-    _utteranceIdleTimer = null;
+  void discardPendingTranslatedWords() {
+    final candidate = _pendingTranslatedWords;
+    if (candidate == null || _pendingUtterance != null) return;
+    _pendingTranslatedWords = null;
+    backendStatus =
+        'Skipped ${candidate.words.join(' ')} · ready for the next sign';
+    notifyListeners();
+  }
+
+  void _dismissPendingForNextSign() {
+    if (_pendingTranslatedWords == null) return;
+    _pendingTranslatedWords = null;
+  }
+
+  void removeTranslatedWordAt(int index) {
+    if (_pendingUtterance != null ||
+        index < 0 ||
+        index >= _utteranceWords.length) {
+      return;
+    }
+    final removed = _utteranceWords.removeAt(index);
+    if (_utteranceWords.isEmpty) _draftMessageId = null;
+    backendStatus =
+        'Removed ${removed.word} · ${_utteranceWords.length} word${_utteranceWords.length == 1 ? '' : 's'} remain';
+    notifyListeners();
+  }
+
+  void _appendTranslatedWords(_PendingTranslatedWords candidate) {
+    if (_utteranceWords.length + candidate.words.length >
+        TranslatedSignUtteranceContract.maxWords) {
+      throw const TranslatedSignUtteranceValidationException(
+        'An utterance may contain at most 64 words.',
+      );
+    }
+    _draftMessageId ??= _messageIdGenerator();
+    for (var index = 0; index < candidate.words.length; index += 1) {
+      _utteranceWords.add(
+        _BufferedTranslatedWord(
+          word: candidate.words[index],
+          confidence: candidate.confidence,
+          producer: candidate.producer,
+          alternatives: index == 0
+              ? candidate.alternatives
+              : const <EnglishLabelAlternative>[],
+        ),
+      );
+    }
+  }
+
+  String _bufferedWordsStatus(List<String> words) =>
+      _utteranceSubmission.isConfigured
+      ? 'Added ${words.join(' ')} · ${_utteranceWords.length} '
+            'word${_utteranceWords.length == 1 ? '' : 's'} ready · tap Send sentence when it is complete'
+      : 'Added ${words.join(' ')} locally · '
+            'configure a room to send the completed sentence';
+
+  AslRecognitionResult? _reviewableLowConfidenceResult(
+    AslRecognitionResult result,
+  ) {
+    final topCandidate = result.alternatives.isEmpty
+        ? null
+        : result.alternatives.first;
+    if (result.status != 'unknown' ||
+        result.reason != 'low_confidence' ||
+        topCandidate == null) {
+      return null;
+    }
+    return AslRecognitionResult(
+      status: 'recognized',
+      word: topCandidate.word,
+      confidence: topCandidate.confidence,
+      modelVersion: result.modelVersion,
+      frameCount: result.frameCount,
+      reason: result.reason,
+      detail: result.detail,
+      alternatives: result.alternatives,
+      startedAtMs: result.startedAtMs,
+      endedAtMs: result.endedAtMs,
+      inferenceMs: result.inferenceMs,
+    );
+  }
+
+  PersonalSignMatch? _matchPersonalSign(List<LandmarkFrame> frames) {
+    final sequence = _featureSequence(frames);
+    return _personalSignMatcher.match(
+      sequence: sequence,
+      signs: customSigns,
+      language: selectedLanguage,
+    );
   }
 
   /// Gives a confidently matched personal sign precedence over the general
   /// ASL model. Private vocabulary stays on-device and does not modify the
   /// pretrained ONNX model.
-  AslRecognitionResult _preferPersonalSign(
-    AslRecognitionResult modelResult,
+  AslRecognitionResult? _personalSignRecognition(
+    PersonalSignMatch? match,
     List<LandmarkFrame> frames,
-  ) => _personalSignRecognition(frames) ?? modelResult;
-
-  AslRecognitionResult? _personalSignRecognition(List<LandmarkFrame> frames) {
-    final sequence = _featureSequence(frames);
-    final match = _personalSignMatcher.match(
-      sequence: sequence,
-      signs: customSigns,
-      language: selectedLanguage,
-    );
+  ) {
     if (match == null) return null;
     return AslRecognitionResult(
       status: 'recognized',
       word: match.label,
       confidence: match.confidence,
       modelVersion: 'personal_landmark_templates_v1',
-      frameCount: sequence.length,
+      frameCount: frames.length,
       detail:
           'Matched ${match.sampleCount} personal landmark recordings locally',
       alternatives: <AslRecognitionCandidate>[
@@ -828,6 +949,55 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       startedAtMs: frames.first.timestamp.millisecondsSinceEpoch,
       endedAtMs: frames.last.timestamp.millisecondsSinceEpoch,
     );
+  }
+
+  Future<bool> _runPersonalSignShortcut(
+    PersonalSignMatch? match,
+    List<LandmarkFrame> frames,
+  ) async {
+    if (match == null) return false;
+    final action = _shortcutForLabel(match.label);
+    if (action == null) return false;
+
+    final recognition = _personalSignRecognition(match, frames);
+    if (recognition != null) _setLatestAnalysis(_localAslAnalysis(recognition));
+    switch (action) {
+      case PersonalSignShortcut.addPossibleWord:
+        if (!hasPendingTranslatedWords) {
+          backendStatus =
+              'Gesture ${match.label} recognised · no possible word is waiting to add';
+          notifyListeners();
+          return true;
+        }
+        addPendingTranslatedWords();
+        backendStatus = 'Gesture ${match.label} recognised · $backendStatus';
+        notifyListeners();
+        return true;
+      case PersonalSignShortcut.deleteLastWord:
+        _dismissPendingForNextSign();
+        if (!hasTranslatedWords) {
+          backendStatus =
+              'Gesture ${match.label} recognised · no sentence word is available to remove';
+          notifyListeners();
+          return true;
+        }
+        removeTranslatedWordAt(translatedWordCount - 1);
+        backendStatus = 'Gesture ${match.label} recognised · $backendStatus';
+        notifyListeners();
+        return true;
+      case PersonalSignShortcut.sendSentence:
+        _dismissPendingForNextSign();
+        if (!hasTranslatedWords && !hasPendingUtteranceSubmission) {
+          backendStatus =
+              'Gesture ${match.label} recognised · add a word before sending a sentence';
+          notifyListeners();
+          return true;
+        }
+        backendStatus = 'Gesture ${match.label} recognised · sending sentence…';
+        notifyListeners();
+        await commitTranslatedUtterance();
+        return true;
+    }
   }
 
   SignAnalysisResult _localAslAnalysis(AslRecognitionResult result) {
@@ -882,9 +1052,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Submits exactly one completed utterance. If its acknowledgement is lost,
-  /// the retained immutable payload is sent again with the same UUID and
-  /// sequence number; a new utterance is never created for that retry.
+  /// Submits exactly one completed utterance. If an acknowledgement is delayed,
+  /// the retained immutable payload is used by the normal Send sentence action
+  /// with the same UUID and sequence number, preventing a duplicate utterance.
   Future<void> commitTranslatedUtterance({
     TranslatedSignUtteranceCompletionReason completionReason =
         TranslatedSignUtteranceCompletionReason.userCommit,
@@ -898,7 +1068,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     if (_pendingUtterance == null && _utteranceWords.isEmpty) {
-      backendStatus = 'Sign at least one word before translating an utterance';
+      backendStatus =
+          'Add at least one recognised word before sending a sentence';
       notifyListeners();
       return;
     }
@@ -914,7 +1085,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _pendingUtterance = utterance;
-    _cancelUtteranceAutoCommit();
     _utteranceSubmissionInFlight = true;
     backendStatus =
         'Submitting final ${utterance.words.length}-word utterance…';
@@ -931,7 +1101,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } on TranslatedSignUtteranceSubmissionException catch (error) {
       if (_disposed) return;
       backendStatus = error.retryable
-          ? '${error.message} Tap Translate to retry the same utterance.'
+          ? '${error.message} The sentence is kept safe; use Send sentence when the room is available.'
           : error.message;
     } on Object catch (error) {
       if (_disposed) return;
@@ -949,7 +1119,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final producer = _utteranceWords.first.producer;
     if (_utteranceWords.any((word) => word.producer != producer)) {
       throw StateError(
-        'One utterance cannot mix recognizer profiles. Translate the current words before switching recognizers.',
+        'One sentence cannot mix recognizer profiles. Send the current words before switching recognizers.',
       );
     }
     return TranslatedSignUtterance(
@@ -1037,13 +1207,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void togglePause() {
     isPaused = !isPaused;
     if (isPaused) {
-      _cancelUtteranceAutoCommit();
       _recognitionGeneration += 1;
       _signBoundaryDetector.reset();
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       unawaited(_aslRecognizer.reset());
-    } else {
-      _scheduleUtteranceAutoCommit();
     }
     notifyListeners();
   }
@@ -1055,13 +1222,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (_teachingPersonalSign == value) return;
     _teachingPersonalSign = value;
     if (value) {
-      _cancelUtteranceAutoCommit();
       _recognitionGeneration += 1;
       _signBoundaryDetector.reset();
       if (tracking.isCapturingSign) unawaited(tracking.finishSign());
       unawaited(_aslRecognizer.reset());
-    } else {
-      _scheduleUtteranceAutoCommit();
     }
     notifyListeners();
   }
@@ -1069,13 +1233,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void clearCaption() {
     if (_pendingUtterance != null) {
       backendStatus =
-          'A final utterance is awaiting retry and cannot be changed';
+          'The current sentence is still being sent and cannot be changed yet';
       notifyListeners();
       return;
     }
     isUnregisteredSign = false;
-    _cancelUtteranceAutoCommit();
     _utteranceWords.clear();
+    _pendingTranslatedWords = null;
     _draftMessageId = null;
     latestAnalysis = null;
     backendStatus = 'Local word buffer cleared';
@@ -1092,25 +1256,115 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     List<List<List<double>>> sequences,
   ) async {
     final frame = latestFrame;
-    final samples = sequences
-        .where((sequence) => sequence.isNotEmpty)
+    final normalizedLabel = label.trim();
+    final matchingSigns = customSigns
+        .where(
+          (sign) =>
+              sign.language.toUpperCase() == selectedLanguage.toUpperCase() &&
+              sign.label.trim().toLowerCase() == normalizedLabel.toLowerCase(),
+        )
+        .toList(growable: false);
+    final combinedSequences = <List<List<double>>>[
+      for (final sign in matchingSigns) ...sign.templateSequences,
+      ...sequences.where((sequence) => sequence.isNotEmpty),
+    ];
+    // More examples improve recognition, but a bounded recent set keeps
+    // matching responsive and avoids unbounded browser storage growth.
+    const maximumExamples = 20;
+    final retainedSequences = combinedSequences.length <= maximumExamples
+        ? combinedSequences
+        : combinedSequences.sublist(combinedSequences.length - maximumExamples);
+    final samples = retainedSequences
         .map(
           (sequence) =>
               List<double>.unmodifiable(sequence[sequence.length ~/ 2]),
         )
         .toList(growable: false);
     final sign = CustomSign(
-      label: label,
+      label: normalizedLabel,
       samples: samples,
-      sequences: sequences,
-      createdAt: DateTime.now(),
+      sequences: retainedSequences,
+      createdAt: matchingSigns.isEmpty
+          ? DateTime.now()
+          : matchingSigns
+                .map((sign) => sign.createdAt)
+                .reduce((first, next) => first.isBefore(next) ? first : next),
       language: selectedLanguage,
       vectorSize: samples.isEmpty ? 0 : samples.first.length,
       coordinateSpace: _coordinateSpace(frame),
       faceSignal: frame?.faceExpression?.label ?? 'not captured',
     );
-    customSigns = <CustomSign>[...customSigns, sign];
+    customSigns = <CustomSign>[
+      ...customSigns.where((existing) => !matchingSigns.contains(existing)),
+      sign,
+    ];
     await _localState.saveCustomSigns(customSigns);
+    backendStatus = matchingSigns.isEmpty
+        ? '$normalizedLabel saved with ${sign.sampleCount} examples'
+        : '$normalizedLabel improved with ${sign.sampleCount} examples';
+    notifyListeners();
+  }
+
+  /// A portable JSON copy of the local-only personal-sign templates. It never
+  /// appears in a room message or leaves the browser without an explicit user
+  /// action such as copy/paste.
+  String exportCustomSignsBackup() =>
+      _localState.exportCustomSignsBackup(customSigns);
+
+  Future<CustomSignBackupRestoreResult> restoreCustomSignsBackup(
+    String encoded,
+  ) async {
+    final incoming = _localState.decodeCustomSignsBackup(encoded);
+    final incomingByKey = <String, CustomSign>{
+      for (final sign in incoming) _customSignBackupKey(sign): sign,
+    };
+    final existingKeys = customSigns.map(_customSignBackupKey).toSet();
+    final replaced = incomingByKey.keys.where(existingKeys.contains).length;
+    final added = incomingByKey.length - replaced;
+    final merged = <CustomSign>[];
+    for (final existing in customSigns) {
+      final replacement = incomingByKey.remove(_customSignBackupKey(existing));
+      merged.add(replacement ?? existing);
+    }
+    merged.addAll(incomingByKey.values);
+    customSigns = merged;
+    await _localState.saveCustomSigns(customSigns);
+    notifyListeners();
+    return CustomSignBackupRestoreResult(added: added, replaced: replaced);
+  }
+
+  String _customSignBackupKey(CustomSign sign) =>
+      '${sign.language.trim().toUpperCase()}\u0000${sign.label.trim().toLowerCase()}';
+
+  Future<void> setPersonalSignShortcut(
+    PersonalSignShortcut shortcut,
+    String? label,
+  ) async {
+    final requested = label?.trim();
+    final matchingLabel = requested == null || requested.isEmpty
+        ? null
+        : _matchingCustomSignLabel(requested);
+    if (requested != null && requested.isNotEmpty && matchingLabel == null) {
+      backendStatus = 'Choose a saved personal sign for this gesture control';
+      notifyListeners();
+      return;
+    }
+    if (matchingLabel != null) _clearShortcutLabel(matchingLabel);
+    switch (shortcut) {
+      case PersonalSignShortcut.addPossibleWord:
+        _addPossibleWordShortcutLabel = matchingLabel;
+        break;
+      case PersonalSignShortcut.deleteLastWord:
+        _deleteLastWordShortcutLabel = matchingLabel;
+        break;
+      case PersonalSignShortcut.sendSentence:
+        _sendSentenceShortcutLabel = matchingLabel;
+        break;
+    }
+    await _savePersonalSignShortcuts();
+    backendStatus = matchingLabel == null
+        ? 'Gesture shortcut turned off'
+        : 'Gesture $matchingLabel is ready on this device';
     notifyListeners();
   }
 
@@ -1189,7 +1443,76 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> deleteCustomSign(CustomSign sign) async {
     customSigns = customSigns.where((item) => item != sign).toList();
     await _localState.saveCustomSigns(customSigns);
+    final deletedLabel = sign.label.toLowerCase();
+    if (_addPossibleWordShortcutLabel?.toLowerCase() == deletedLabel) {
+      _addPossibleWordShortcutLabel = null;
+    }
+    if (_deleteLastWordShortcutLabel?.toLowerCase() == deletedLabel) {
+      _deleteLastWordShortcutLabel = null;
+    }
+    if (_sendSentenceShortcutLabel?.toLowerCase() == deletedLabel) {
+      _sendSentenceShortcutLabel = null;
+    }
+    await _savePersonalSignShortcuts();
     notifyListeners();
+  }
+
+  String? _matchingCustomSignLabel(String? label) {
+    final wanted = label?.trim().toLowerCase();
+    if (wanted == null || wanted.isEmpty) return null;
+    for (final sign in customSigns) {
+      if (sign.hasEnoughSamples && sign.label.trim().toLowerCase() == wanted) {
+        return sign.label;
+      }
+    }
+    return null;
+  }
+
+  PersonalSignShortcut? _shortcutForLabel(String label) {
+    final value = label.trim().toLowerCase();
+    if (value.isEmpty) return null;
+    if (value == _addPossibleWordShortcutLabel?.toLowerCase()) {
+      return PersonalSignShortcut.addPossibleWord;
+    }
+    if (value == _deleteLastWordShortcutLabel?.toLowerCase()) {
+      return PersonalSignShortcut.deleteLastWord;
+    }
+    if (value == _sendSentenceShortcutLabel?.toLowerCase()) {
+      return PersonalSignShortcut.sendSentence;
+    }
+    return null;
+  }
+
+  void _clearShortcutLabel(String label) {
+    final value = label.toLowerCase();
+    if (_addPossibleWordShortcutLabel?.toLowerCase() == value) {
+      _addPossibleWordShortcutLabel = null;
+    }
+    if (_deleteLastWordShortcutLabel?.toLowerCase() == value) {
+      _deleteLastWordShortcutLabel = null;
+    }
+    if (_sendSentenceShortcutLabel?.toLowerCase() == value) {
+      _sendSentenceShortcutLabel = null;
+    }
+  }
+
+  Future<void> _savePersonalSignShortcuts() {
+    final shortcuts = <String, String>{};
+    final addPossibleWord = _addPossibleWordShortcutLabel;
+    final sendSentence = _sendSentenceShortcutLabel;
+    if (addPossibleWord != null) {
+      shortcuts[PersonalSignShortcut.addPossibleWord.storageKey] =
+          addPossibleWord;
+    }
+    final deleteLastWord = _deleteLastWordShortcutLabel;
+    if (deleteLastWord != null) {
+      shortcuts[PersonalSignShortcut.deleteLastWord.storageKey] =
+          deleteLastWord;
+    }
+    if (sendSentence != null) {
+      shortcuts[PersonalSignShortcut.sendSentence.storageKey] = sendSentence;
+    }
+    return _localState.saveGestureShortcuts(shortcuts);
   }
 
   String _coordinateSpace(LandmarkFrame? frame) {
@@ -1225,7 +1548,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     _serverLandmarkStream = null;
     unawaited(integration?.close());
     _frameNotifyTimer?.cancel();
-    _cancelUtteranceAutoCommit();
     unawaited(_aslRecognizer.reset());
     _aslRecognizer.dispose();
     _trackingSubscription.cancel();
@@ -1253,6 +1575,21 @@ final class _BufferedTranslatedWord {
   }) : alternatives = List<EnglishLabelAlternative>.unmodifiable(alternatives);
 
   final String word;
+  final double confidence;
+  final TranslatedSignUtteranceProducer producer;
+  final List<EnglishLabelAlternative> alternatives;
+}
+
+final class _PendingTranslatedWords {
+  _PendingTranslatedWords({
+    required List<String> words,
+    required this.confidence,
+    required this.producer,
+    required List<EnglishLabelAlternative> alternatives,
+  }) : words = List<String>.unmodifiable(words),
+       alternatives = List<EnglishLabelAlternative>.unmodifiable(alternatives);
+
+  final List<String> words;
   final double confidence;
   final TranslatedSignUtteranceProducer producer;
   final List<EnglishLabelAlternative> alternatives;

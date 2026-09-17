@@ -41,5 +41,24 @@ flutter build web --release \
 python3 -m http.server 8081 --directory build/web
 ```
 
+The browser tracker keeps the last reliable nose and shoulder anchors for up
+to 0.9 seconds and the locked face mesh for up to 0.85 seconds. Confidence
+fades throughout either gap, and the inferred points expire rather than being
+treated as permanent detections. This lets a hand cross a shoulder or cheek
+without immediately removing the overlay. Camera pixels and Holistic frames
+still remain in the browser. During those bounded gaps, the local classifier
+receives the persisted face and pose anchors together with the live hand
+points, improving continuity for contact signs without a network upload.
+
+To verify the tracker locally, cover one shoulder briefly, perform a
+hand-to-cheek sign such as `HOME`, and move slowly toward the camera. The face
+and shoulder overlay should bridge a short occlusion and then recover to the
+live points. A feature that remains fully outside the frame beyond the bounded
+hold interval should disappear. Run the deterministic browser checks with:
+
+```bash
+npm run test:web
+```
+
 See [`docs/INTEGRATION_DEPLOY1.md`](../docs/INTEGRATION_DEPLOY1.md) for backend,
 Railway, Cloudflare tunnel and two-device test instructions.

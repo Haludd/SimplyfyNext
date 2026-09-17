@@ -2,7 +2,7 @@
   "name": "signbridge-browser-tests",
   "private": true,
   "scripts": {
-    "test:web": "node --experimental-vm-modules --test test/web/asl_recognizer_test.mjs"
+    "test:web": "node --experimental-vm-modules --test test/web/*.mjs"
   },
   "devDependencies": {
     "playwright": "1.51.1"

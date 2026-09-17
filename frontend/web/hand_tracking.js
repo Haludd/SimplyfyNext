@@ -5,6 +5,10 @@ import {
   prepareAslRecognizer,
   resetAslSignCapture,
 } from './asl_recognizer.js?v=20260913-signchat-onnx-6';
+import {
+  LandmarkPersistence,
+  PERSISTENCE_CONFIDENCE_KEY,
+} from './landmark_persistence.js?v=20260917-tracker-persistence-1';
 
 // MediaPipe supplies the live overlay and the 543 landmark rows consumed by
 // the browser-local Signchat ONNX classifier.
@@ -158,6 +162,7 @@ let streamTrackEndHandlers = [];
 let subjectTrack;
 let subjectAcquire;
 let subjectReferenceIdentity;
+const landmarkPersistence = new LandmarkPersistence();
 let fingerQualityHistory = {
   left: {},
   right: {},
@@ -385,7 +390,8 @@ function pointConfidence(point, modelConfidence) {
 function posePointToJson(point, index, name) {
   if (!point) return null;
   const modelConfidence = point.visibility ?? point.presence ?? 0;
-  const confidence = pointConfidence(point, modelConfidence);
+  const confidence = point[PERSISTENCE_CONFIDENCE_KEY] ??
+    pointConfidence(point, modelConfidence);
   return {
     index,
     name,
@@ -399,7 +405,11 @@ function posePointToJson(point, index, name) {
 
 function facePointToJson(point, index, name) {
   if (!point) return null;
-  const confidence = pointConfidence(point, 0.75);
+  // Face Mesh exposes one face-level result rather than per-point confidence.
+  // A detected mesh receives a conservative 0.9 base; a persisted mesh
+  // carries its own age-decayed confidence from LandmarkPersistence.
+  const confidence = point[PERSISTENCE_CONFIDENCE_KEY] ??
+    pointConfidence(point, 0.9);
   return {
     index,
     name,
@@ -1036,7 +1046,12 @@ function dispatchFrame(
   );
   const leftShoulder = posePointToJson(pose[11], 11, 'left_shoulder');
   const rightShoulder = posePointToJson(pose[12], 12, 'right_shoulder');
-  const faceLandmarks = selectSubjectFace(faceResult, subject);
+  const detectedFaceLandmarks = selectSubjectFace(faceResult, subject);
+  const faceLandmarks = landmarkPersistence.stabilizeFace(
+    detectedFaceLandmarks,
+    subject,
+    timestampMs,
+  );
   const faceUpper = curatedLandmarks(
     faceLandmarks,
     FACE_UPPER_LANDMARKS,
@@ -1098,7 +1113,7 @@ function dispatchFrame(
   if (subject?.visible === true) {
     addConfidenceGroup(poseLandmarks, POSE_LANDMARKS.length);
   }
-  if (faceResult?.faceLandmarks?.length > 0 && subject?.visible === true) {
+  if (faceLandmarks.length > 0 && subject?.visible === true) {
     addConfidenceGroup(
       [...faceUpper, ...faceMouth],
       FACE_UPPER_LANDMARKS.length + FACE_MOUTH_LANDMARKS.length,
@@ -1129,11 +1144,22 @@ function dispatchFrame(
     landmark_worlds: landmarkWorlds,
     subject_tracking: subjectTracking,
   };
-  // The browser-local Signchat classifier consumes the same full Holistic
-  // landmark result used to build the overlay frame.
+  // Preserve live hands and every untouched Holistic field. During a bounded
+  // detector gap, copy only the stabilized pose anchors and face mesh into the
+  // browser-local classifier frame. This improves contact signs without ever
+  // mutating MediaPipe's result or sending camera data off-device.
+  const classifierHolisticResults = {
+    ...holisticResults,
+    poseLandmarks: pose.length >= 33
+      ? pose
+      : holisticResults?.poseLandmarks,
+    faceLandmarks: faceLandmarks.length >= 468
+      ? faceLandmarks
+      : holisticResults?.faceLandmarks,
+  };
   ingestAslFrame({
     timestampMs,
-    holisticResults,
+    holisticResults: classifierHolisticResults,
   });
   // Keep the Flutter JSON handoff capped while the local classifier receives
   // the full detector result above.
@@ -1183,11 +1209,13 @@ function onHolisticResults(results) {
   const face = Array.isArray(results?.faceLandmarks)
     ? results.faceLandmarks
     : [];
+  const timestampMs = Date.now();
+  const stablePose = landmarkPersistence.stabilizePose(pose, timestampMs);
   dispatchFrame(
     holisticResultAsTaskResults(results ?? {}),
-    {landmarks: pose.length === 33 ? [pose] : []},
-    {faceLandmarks: face.length === 468 ? [face] : []},
-    Date.now(),
+    {landmarks: stablePose.length >= 33 ? [stablePose] : []},
+    {faceLandmarks: face.length >= 468 ? [face] : []},
+    timestampMs,
     undefined,
     results ?? {},
   );
@@ -1249,16 +1277,16 @@ function createHolistic() {
   const tracker = new Holistic({
     locateFile: (file) => `${HOLISTIC_CDN_BASE}/${file}`,
   });
-  // Keep one coherent Holistic stream with 468 face landmarks (no iris
-  // refinement), full pose, and person-relative left/right hand slots.
+  // Keep one coherent Holistic stream with the standard 468 face points plus
+  // refined eye/lip landmarks, full pose, and person-relative hand slots.
   tracker.setOptions({
     modelComplexity: 1,
     smoothLandmarks: true,
     enableSegmentation: false,
     smoothSegmentation: false,
-    refineFaceLandmarks: false,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    refineFaceLandmarks: true,
+    minDetectionConfidence: 0.45,
+    minTrackingConfidence: 0.35,
   });
   tracker.onResults(onHolisticResults);
   return tracker;
@@ -1336,6 +1364,7 @@ async function start() {
   subjectTrack = null;
   subjectAcquire = null;
   subjectReferenceIdentity = null;
+  landmarkPersistence.reset();
   fingerQualityHistory = {left: {}, right: {}, unknown: {}};
   void prepareAslRecognizer().catch(() => {
     // Model loading errors are surfaced by the recognizer after the clip is
@@ -1373,6 +1402,7 @@ async function stop() {
   subjectTrack = null;
   subjectAcquire = null;
   subjectReferenceIdentity = null;
+  landmarkPersistence.reset();
   fingerQualityHistory = {left: {}, right: {}, unknown: {}};
   resetAslSignCapture();
 }

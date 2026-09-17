@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 
 /// Public, non-secret location of the SimplyNext room API.
 final class RoomClientConfig {
-  RoomClientConfig({required this.apiOrigin}) {
+  RoomClientConfig({
+    required this.apiOrigin,
+    this.usesSameOriginGateway = false,
+  }) {
     if (!apiOrigin.isAbsolute || apiOrigin.host.isEmpty) {
       throw ArgumentError.value(apiOrigin, 'apiOrigin', 'must be absolute');
     }
@@ -25,13 +28,36 @@ final class RoomClientConfig {
 
   factory RoomClientConfig.fromEnvironment() {
     const configured = String.fromEnvironment('SIGNBRIDGE_API_BASE_URL');
-    final value = configured.trim().isEmpty
+    const useSameOriginGateway = bool.fromEnvironment(
+      'SIGNBRIDGE_USE_SAME_ORIGIN_PROXY',
+    );
+    return RoomClientConfig.resolve(
+      configuredOrigin: configured,
+      browserLocation: kIsWeb ? Uri.base : null,
+      useSameOriginGateway: useSameOriginGateway,
+    );
+  }
+
+  @visibleForTesting
+  factory RoomClientConfig.resolve({
+    required String configuredOrigin,
+    required Uri? browserLocation,
+    required bool useSameOriginGateway,
+  }) {
+    if (useSameOriginGateway && browserLocation != null) {
+      return RoomClientConfig(
+        apiOrigin: Uri.parse(browserLocation.origin),
+        usesSameOriginGateway: true,
+      );
+    }
+    final value = configuredOrigin.trim().isEmpty
         ? 'http://127.0.0.1:8000'
-        : configured.trim();
+        : configuredOrigin.trim();
     return RoomClientConfig(apiOrigin: Uri.parse(value));
   }
 
   final Uri apiOrigin;
+  final bool usesSameOriginGateway;
 
   Uri http(String path) =>
       apiOrigin.replace(path: path, query: null, fragment: null);

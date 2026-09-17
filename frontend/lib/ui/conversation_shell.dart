@@ -303,7 +303,9 @@ class _RoomLobbyState extends State<_RoomLobby> {
                       ],
                       const SizedBox(height: 16),
                       Text(
-                        'Backend: ${widget.room.config.displayOrigin}',
+                        widget.room.config.usesSameOriginGateway
+                            ? 'Room gateway: ${widget.room.config.displayOrigin}'
+                            : 'Backend: ${widget.room.config.displayOrigin}',
                         textAlign: TextAlign.center,
                         style: const TextStyle(color: _muted, fontSize: 11),
                       ),

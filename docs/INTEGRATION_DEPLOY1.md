@@ -129,11 +129,15 @@ to distinguish policy, provider, Bedrock IAM, and WebSocket delivery failures.
 - Service root: `/frontend`
 - Config file: `/frontend/railway.json`
 - Build variable: `SIGNBRIDGE_API_BASE_URL=https://BACKEND_HOST`
-- Generate an HTTPS public domain, then place that exact origin in the
-  backend's `SIMPLYNEXT_ALLOWED_ORIGINS`.
+- Generate an HTTPS public domain. The Docker release proxies browser `/v1/`
+  HTTP and WebSocket traffic to the build-variable backend, so the hosted UI
+  uses one origin and does not depend on the backend CORS allow-list. Keep the
+  exact frontend origin in `SIMPLYNEXT_ALLOWED_ORIGINS` only for direct
+  frontend-to-backend builds and explicit browser protocol tests.
 
-Redeploy the backend after changing its origin allow-list, then redeploy the
-frontend. The QR contains only the frontend join URL and public room code.
+Redeploy the frontend after changing `SIGNBRIDGE_API_BASE_URL`; it is compiled
+into Flutter and the Nginx upstream during the Docker build. The QR contains
+only the frontend join URL and public room code.
 
 ## Cloudflare quick-tunnel test
 

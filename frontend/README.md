@@ -28,8 +28,14 @@ flutter run -d chrome --web-port 8081 \
   --dart-define=SIGNBRIDGE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-Use HTTPS for camera and microphone access outside localhost. The backend must
-allow this frontend's exact origin.
+Use HTTPS for camera and microphone access outside localhost. Direct browser
+connections to the backend require its exact frontend origin to be allowed.
+
+The Railway Docker image uses `SIGNBRIDGE_API_BASE_URL` as its Nginx
+upstream and sends browser room HTTP/WebSocket traffic through `/v1/` on the
+frontend origin. This same-origin gateway avoids a stale backend CORS
+allow-list after a frontend domain or service changes. Direct `flutter run`
+development continues to contact `SIGNBRIDGE_API_BASE_URL` directly.
 
 If you serve `build/web` with a static server instead of `flutter run`, rebuild
 after every pull. `build/web` is intentionally ignored by Git and can otherwise

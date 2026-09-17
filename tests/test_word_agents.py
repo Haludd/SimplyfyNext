@@ -289,6 +289,27 @@ async def test_an_unlisted_pronoun_form_is_still_rejected():
     assert len(fake.calls) == 1
 
 
+async def test_third_person_verb_agreement_forms_a_coherent_sentence():
+    # HE DRINK WATER has no natural literal-word sentence ("He drink water." is
+    # ungrammatical); DRINK must be able to surface as "drinks" for a singular
+    # subject, same as the already-reviewed WANT/wants case.
+    draft = {
+        "schema_version": "1.0",
+        "candidate_text": "He drinks water.",
+        "tts_text": "He drinks water.",
+        "alignment": [
+            {"text": "He", "input_indices": [0], "transformation": "lexical"},
+            {"text": "drinks", "input_indices": [1], "transformation": "inflection"},
+            {"text": "water.", "input_indices": [2], "transformation": "lexical"},
+        ],
+        "unresolved_indices": [],
+    }
+    fake = FakeConverse(response(draft), response(verdict()))
+    result = await engine(fake).process(utterance(("HE", "DRINK", "WATER")), context())
+    assert result.status == "accepted"
+    assert result.text == "He drinks water."
+
+
 @pytest.mark.parametrize(
     "mutation", ["omitted", "unknown", "repeat", "gap", "tts", "question", "length"]
 )

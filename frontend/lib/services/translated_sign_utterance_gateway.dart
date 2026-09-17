@@ -4,6 +4,11 @@ abstract interface class TranslatedSignUtteranceGateway {
   bool get isConfigured;
   String? get configurationMessage;
   int get nextClientSequence;
+  bool get hasPendingRetry;
+
+  /// Resolves a transport request retained after an uncertain response before
+  /// a different message is sent with the next sequence number.
+  Future<void> retryPendingSubmission();
 
   Future<TranslatedSignUtteranceAcknowledgement> submit(
     TranslatedSignUtterance utterance,

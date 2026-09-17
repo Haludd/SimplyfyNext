@@ -6,6 +6,7 @@ import 'package:apptesting/contracts/translated_sign_utterance.dart';
 import 'package:apptesting/models/room_models.dart';
 import 'package:apptesting/services/room_session_controller.dart';
 import 'package:apptesting/services/room_session_storage.dart';
+import 'package:apptesting/services/translated_sign_utterance_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -167,6 +168,88 @@ void main() {
     expect(room.hasRoom, isFalse);
     expect(room.status, RoomConnectionStatus.ended);
     expect(storage.read(), isNull);
+  });
+
+  test('a changed sign payload reports a typed pending error and the old request can retry', () async {
+    var signAttempts = 0;
+    final client = MockClient((request) async {
+      if (request.url.path == '/v1/rooms') {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'event_schema_version': '1.0',
+            'utterance_schema_version': '1.0',
+            'code': 'ABCDEFGH',
+            'participant_id': '11111111-1111-4111-8111-111111111111',
+            'role': 'signer',
+            'token': 'participant-secret',
+            'join_path': '/?room=ABCDEFGH',
+          }),
+          201,
+        );
+      }
+      if (request.url.path.endsWith('/sign-utterances')) {
+        signAttempts += 1;
+        if (signAttempts == 1) {
+          throw http.ClientException('response lost');
+        }
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'event_schema_version': '1.0',
+            'type': 'utterance_ack',
+            'message_id': body['message_id'],
+            'client_sequence': body['client_sequence'],
+            'server_sequence': 0,
+            'disposition': 'accepted',
+          }),
+          202,
+        );
+      }
+      fail('Unexpected request: ${request.method} ${request.url.path}');
+    });
+    final room = RoomSessionController(
+      config: RoomClientConfig(apiOrigin: Uri.parse('http://127.0.0.1:8000')),
+      httpClient: client,
+      socketConnector: (_) => throw StateError('socket unavailable in test'),
+    );
+    addTearDown(room.dispose);
+    await room.create('Signer');
+
+    final firstJson = jsonDecode(
+      File('../tests/fixtures/translated_sign_utterance_v1.json')
+          .readAsStringSync(),
+    ) as Map<String, dynamic>;
+    final first = TranslatedSignUtterance.fromJson(firstJson);
+    await expectLater(
+      room.submit(first),
+      throwsA(
+        isA<TranslatedSignUtteranceSubmissionException>().having(
+          (error) => error.code,
+          'code',
+          'unreachable',
+        ),
+      ),
+    );
+    expect(room.hasPendingRetry, isTrue);
+
+    firstJson['message_id'] = '22222222-2222-4222-8222-222222222222';
+    final changed = TranslatedSignUtterance.fromJson(firstJson);
+    await expectLater(
+      room.submit(changed),
+      throwsA(
+        isA<TranslatedSignUtteranceSubmissionException>().having(
+          (error) => error.code,
+          'code',
+          'pending_message',
+        ),
+      ),
+    );
+
+    await room.retryPendingSubmission();
+
+    expect(room.hasPendingRetry, isFalse);
+    expect(room.nextClientSequence, 1);
+    expect(signAttempts, 2);
   });
 
   testWidgets(

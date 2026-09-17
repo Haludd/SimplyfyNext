@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:apptesting/app_controller.dart';
 import 'package:apptesting/contracts/landmark_stream.dart';
+import 'package:apptesting/contracts/translated_sign_utterance.dart';
 import 'package:apptesting/models/asl_recognition_models.dart';
 import 'package:apptesting/models/face_tracking_models.dart';
 import 'package:apptesting/models/hand_tracking_models.dart';
@@ -350,19 +351,19 @@ void main() {
     tracking.ingest(frame);
     await controller.analyzeSign();
 
-      expect(controller.translatedWords, <String>['I']);
-      expect(
-        controller.visibleAnalysis?.modelVersion,
-        'personal_landmark_templates_v1',
-      );
-      final personalPreview = jsonDecode(
-        controller.translatedUtterancePreviewJson!,
-      ) as Map<String, dynamic>;
-      expect(
-        (personalPreview['producer'] as Map<String, dynamic>)['recognizer_id'],
-        'personal_landmark_templates',
-      );
-      expect(sent, isNull);
+    expect(controller.translatedWords, <String>['I']);
+    expect(
+      controller.visibleAnalysis?.modelVersion,
+      'personal_landmark_templates_v1',
+    );
+    final personalPreview = jsonDecode(
+      controller.translatedUtterancePreviewJson!,
+    ) as Map<String, dynamic>;
+    expect(
+      (personalPreview['producer'] as Map<String, dynamic>)['recognizer_id'],
+      'personal_landmark_templates',
+    );
+    expect(sent, isNull);
 
     // A sentence can continue with the shipped model after a personal word.
     controller.customSigns = <CustomSign>[];
@@ -447,6 +448,42 @@ void main() {
       expect(sent?['words'], hasLength(1));
       expect((sent?['words'] as List).single['confidence'], .40);
       expect(controller.translatedWords, isEmpty);
+    },
+  );
+
+  test(
+    'send resolves a restored room retry before assigning the current sequence',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final tracking = DemoTrackingService();
+      final submission = _RecoveringSubmission();
+      final controller = AppController(
+        LocalStateService(preferences),
+        tracking,
+        DeviceAccessService(),
+        aslRecognizer: _Recognizer(),
+        utteranceSubmission: submission,
+        messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
+      )..audioEnabled = false;
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(Duration.zero);
+
+      controller.addHypothesisWord('where', .9);
+      controller.addHypothesisWord('mine', .8);
+      controller.addHypothesisWord('jacket', .7);
+
+      await controller.commitTranslatedUtterance();
+
+      expect(submission.retryCalls, 1);
+      expect(submission.submitted?.clientSequence, 1);
+      expect(submission.submitted?.words.map((word) => word.word), <String>[
+        'WHERE',
+        'MINE',
+        'JACKET',
+      ]);
+      expect(controller.translatedWords, isEmpty);
+      expect(controller.backendStatus, contains('Utterance accepted'));
     },
   );
 
@@ -555,5 +592,45 @@ class _Recognizer extends AslRecognizerBridge {
     finishCalls++;
     if (fail) throw StateError('test runtime failure');
     return pending == null ? result : await pending!.future;
+  }
+}
+
+final class _RecoveringSubmission implements TranslatedSignUtteranceGateway {
+  int retryCalls = 0;
+  int _nextSequence = 0;
+  bool _pending = true;
+  TranslatedSignUtterance? submitted;
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  String? get configurationMessage => null;
+
+  @override
+  int get nextClientSequence => _nextSequence;
+
+  @override
+  bool get hasPendingRetry => _pending;
+
+  @override
+  Future<void> retryPendingSubmission() async {
+    retryCalls += 1;
+    _pending = false;
+    _nextSequence = 1;
+  }
+
+  @override
+  Future<TranslatedSignUtteranceAcknowledgement> submit(
+    TranslatedSignUtterance utterance,
+  ) async {
+    submitted = utterance;
+    _nextSequence = utterance.clientSequence + 1;
+    return TranslatedSignUtteranceAcknowledgement(
+      messageId: utterance.messageId,
+      clientSequence: utterance.clientSequence,
+      serverSequence: 2,
+      disposition: 'accepted',
+    );
   }
 }

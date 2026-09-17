@@ -89,6 +89,12 @@ final class TranslatedSignUtteranceSubmissionService
   int get nextClientSequence => 0;
 
   @override
+  bool get hasPendingRetry => false;
+
+  @override
+  Future<void> retryPendingSubmission() async {}
+
+  @override
   String? get configurationMessage {
     if (endpoint == null) {
       return 'No sign-utterance room endpoint is configured.';

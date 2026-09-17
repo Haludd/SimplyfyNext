@@ -1097,22 +1097,33 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    TranslatedSignUtterance utterance;
-    try {
-      utterance = _pendingUtterance ?? _buildFinalUtterance(completionReason);
-    } on Object catch (error) {
-      backendStatus =
-          'Could not prepare final utterance · ${_shortError(error)}';
-      notifyListeners();
-      return;
-    }
-
-    _pendingUtterance = utterance;
     _utteranceSubmissionInFlight = true;
-    backendStatus =
-        'Submitting final ${utterance.words.length}-word utterance…';
     notifyListeners();
     try {
+      // A room request survives a refresh so an uncertain response can be
+      // retried byte-for-byte. Resolve it before assigning the current words
+      // the next sequence number; otherwise the room correctly rejects the
+      // changed payload as `pending_message`.
+      if (_pendingUtterance == null && _utteranceSubmission.hasPendingRetry) {
+        backendStatus = 'Confirming the previous room message…';
+        notifyListeners();
+        await _utteranceSubmission.retryPendingSubmission();
+        if (_disposed) return;
+      }
+
+      late final TranslatedSignUtterance utterance;
+      try {
+        utterance = _pendingUtterance ?? _buildFinalUtterance(completionReason);
+      } on Object catch (error) {
+        backendStatus =
+            'Could not prepare final utterance · ${_shortError(error)}';
+        return;
+      }
+
+      _pendingUtterance = utterance;
+      backendStatus =
+          'Submitting final ${utterance.words.length}-word utterance…';
+      notifyListeners();
       final acknowledgement = await _utteranceSubmission.submit(utterance);
       if (_disposed) return;
       _pendingUtterance = null;

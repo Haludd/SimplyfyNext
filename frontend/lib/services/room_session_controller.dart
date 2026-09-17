@@ -69,6 +69,7 @@ final class RoomSessionController extends ChangeNotifier
   bool get isSigner => _credentials?.role == RoomRole.signer;
   bool get isHearing => _credentials?.role == RoomRole.hearing;
   bool get submissionInFlight => _submissionInFlight;
+  @override
   bool get hasPendingRetry => _pendingRequest != null;
 
   /// A short, in-memory-only record for the UI's transport inspector.
@@ -282,7 +283,15 @@ final class RoomSessionController extends ChangeNotifier
       );
     }
     final body = utterance.toJson();
-    _preparePending('sign', body);
+    try {
+      _preparePending('sign', body);
+    } on RoomSessionException catch (failure) {
+      throw TranslatedSignUtteranceSubmissionException(
+        code: failure.code,
+        message: failure.message,
+        retryable: failure.retryable,
+      );
+    }
     _submissionInFlight = true;
     notifyListeners();
     try {
@@ -384,7 +393,13 @@ final class RoomSessionController extends ChangeNotifier
           body: body,
           acceptedStatuses: const <int>{202},
         );
-        _completePending(response['client_sequence'] as int);
+        final acknowledgement = TranslatedSignUtteranceAcknowledgement.fromJson(
+          response,
+          expectedMessageId: body['message_id'] as String,
+          expectedClientSequence: body['client_sequence'] as int,
+        );
+        _completePending(acknowledgement.clientSequence);
+        _scheduleTerminalRecovery(acknowledgement.messageId);
       } else if (kind == 'text') {
         final response = await _request(
           '/v1/rooms/${current.code}/messages',
@@ -399,6 +414,19 @@ final class RoomSessionController extends ChangeNotifier
     } finally {
       _submissionInFlight = false;
       if (!_disposed) notifyListeners();
+    }
+  }
+
+  @override
+  Future<void> retryPendingSubmission() async {
+    try {
+      await retryPending();
+    } on RoomSessionException catch (failure) {
+      throw TranslatedSignUtteranceSubmissionException(
+        code: failure.code,
+        message: failure.message,
+        retryable: failure.retryable,
+      );
     }
   }
 

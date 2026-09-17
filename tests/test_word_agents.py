@@ -296,7 +296,7 @@ async def test_policy_gates_spend_nothing(case):
     if case == "unconfigured":
         runtime.policy = None
     elif case == "low":
-        request = utterance(score=0.49)
+        request = utterance(score=0.399)
     elif case == "zero":
         request = utterance(score=0)
     elif case == "ambiguous":
@@ -311,8 +311,8 @@ async def test_policy_gates_spend_nothing(case):
     assert not fake.calls
 
 
-async def test_normalized_scores_do_not_inherit_old_probability_threshold():
-    request = utterance(score=0.6)
+async def test_policy_accepts_configured_forty_percent_boundary():
+    request = utterance(score=0.4)
     fake = FakeConverse(response(ENTRIES[0]["draft"]), response(verdict()))
     assert (await engine(fake).process(request, context())).status == "accepted"
 

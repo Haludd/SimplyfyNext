@@ -29,12 +29,24 @@ const _hello = AslRecognitionResult(
   frameCount: 25,
 );
 
-const _uncertainHello = AslRecognitionResult(
+const _thresholdHello = AslRecognitionResult(
   status: 'recognized',
   word: 'hello',
-  confidence: .60,
+  confidence: .40,
   modelVersion: 'signchat_asl_signs_onnx',
   frameCount: 25,
+);
+
+const _belowThresholdHello = AslRecognitionResult(
+  status: 'unknown',
+  confidence: .399,
+  modelVersion: 'signchat_asl_signs_onnx',
+  frameCount: 25,
+  reason: 'low_confidence',
+  alternatives: <AslRecognitionCandidate>[
+    AslRecognitionCandidate(word: 'hello', confidence: .399, rank: 1),
+    AslRecognitionCandidate(word: 'please', confidence: .10, rank: 2),
+  ],
 );
 
 const _veryUncertainHello = AslRecognitionResult(
@@ -303,11 +315,12 @@ void main() {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = await SharedPreferences.getInstance();
       final tracking = DemoTrackingService();
+      final recognizer = _Recognizer()..result = _thresholdHello;
       final controller = AppController(
         LocalStateService(preferences),
         tracking,
         DeviceAccessService(),
-        aslRecognizer: _Recognizer(),
+        aslRecognizer: recognizer,
         utteranceSubmission: submission,
         messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
       )..audioEnabled = false;
@@ -323,21 +336,36 @@ void main() {
 
       expect(sent, isNull);
       expect(controller.translatedWords, <String>['HELLO']);
+      expect(controller.pendingTranslatedWords, isEmpty);
 
       await controller.commitTranslatedUtterance();
 
       expect(sent?['completion_reason'], 'user_commit');
       expect(sent?['words'], hasLength(1));
+      expect((sent?['words'] as List).single['confidence'], .40);
       expect(controller.translatedWords, isEmpty);
     },
   );
 
+  test('automatically buffers a word at the forty-percent boundary', () async {
+    final (controller, tracking, bridge) = await _controller();
+    addTearDown(controller.dispose);
+    bridge.result = _thresholdHello;
+
+    tracking.beginUtterance();
+    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+    await controller.analyzeSign();
+
+    expect(controller.translatedWords, <String>['HELLO']);
+    expect(controller.hasPendingTranslatedWords, isFalse);
+  });
+
   test(
-    'requires review before adding a low-confidence word and allows removal',
+    'requires review below forty percent and allows the word to be added',
     () async {
       final (controller, tracking, bridge) = await _controller();
       addTearDown(controller.dispose);
-      bridge.result = _uncertainHello;
+      bridge.result = _belowThresholdHello;
 
       tracking.beginUtterance();
       tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
@@ -345,12 +373,11 @@ void main() {
 
       expect(controller.translatedWords, isEmpty);
       expect(controller.pendingTranslatedWords, <String>['HELLO']);
-      expect(controller.pendingTranslatedWordConfidence, .60);
+      expect(controller.pendingTranslatedWordConfidence, .399);
 
       controller.addPendingTranslatedWords();
       expect(controller.translatedWords, <String>['HELLO']);
       expect(controller.hasPendingTranslatedWords, isFalse);
-
       controller.removeTranslatedWordAt(0);
       expect(controller.translatedWords, isEmpty);
     },

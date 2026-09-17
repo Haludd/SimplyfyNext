@@ -8,7 +8,8 @@ import {
 import {
   LandmarkPersistence,
   PERSISTENCE_CONFIDENCE_KEY,
-} from './landmark_persistence.js?v=20260917-tracker-persistence-1';
+  selectLockedFace,
+} from './landmark_persistence.js?v=20260917-tracker-persistence-2';
 
 // MediaPipe supplies the live overlay and the 543 landmark rows consumed by
 // the browser-local Signchat ONNX classifier.
@@ -677,21 +678,16 @@ function selectSubjectPose(poseResult) {
 
 function selectSubjectFace(faceResult, subject) {
   const candidates = faceResult?.faceLandmarks ?? [];
-  if (candidates.length === 0 || !subject || subject.visible === false) return [];
-  const targetX = subject?.faceX ?? 0.5;
-  const targetY = subject?.faceY ?? 0.35;
-  const nearest = candidates.reduce((best, candidate) => {
-    const points = candidate.filter((point) => point != null);
-    if (points.length === 0) return best;
-    const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
-    const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
-    const distance = Math.hypot(centerX - targetX, centerY - targetY);
-    if (!best || distance < best.distance) return {points, distance};
-    return best;
-  }, null);
-  return nearest && nearest.distance <= SUBJECT_FACE_MATCH_DISTANCE
-    ? nearest.points
-    : [];
+  return selectLockedFace(candidates, subject, {
+    matchDistance: SUBJECT_FACE_MATCH_DISTANCE,
+  });
+}
+
+function holisticHandLandmarks(results) {
+  return [results?.leftHandLandmarks, results?.rightHandLandmarks]
+    .filter(Array.isArray)
+    .flat()
+    .filter(validHandPoint);
 }
 
 function handBelongsToSubject(hand, subject) {
@@ -1047,10 +1043,12 @@ function dispatchFrame(
   const leftShoulder = posePointToJson(pose[11], 11, 'left_shoulder');
   const rightShoulder = posePointToJson(pose[12], 12, 'right_shoulder');
   const detectedFaceLandmarks = selectSubjectFace(faceResult, subject);
+  const occluderLandmarks = holisticHandLandmarks(holisticResults);
   const faceLandmarks = landmarkPersistence.stabilizeFace(
     detectedFaceLandmarks,
     subject,
     timestampMs,
+    {occluderLandmarks},
   );
   const faceUpper = curatedLandmarks(
     faceLandmarks,
@@ -1210,7 +1208,11 @@ function onHolisticResults(results) {
     ? results.faceLandmarks
     : [];
   const timestampMs = Date.now();
-  const stablePose = landmarkPersistence.stabilizePose(pose, timestampMs);
+  const stablePose = landmarkPersistence.stabilizePose(
+    pose,
+    timestampMs,
+    {occluderLandmarks: holisticHandLandmarks(results)},
+  );
   dispatchFrame(
     holisticResultAsTaskResults(results ?? {}),
     {landmarks: stablePose.length >= 33 ? [stablePose] : []},

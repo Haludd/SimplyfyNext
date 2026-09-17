@@ -85,6 +85,27 @@ test('covered shoulders follow visible torso motion during a short gap', async (
   );
 });
 
+test('a hand near a covered shoulder extends only that bounded hold', async () => {
+  const api = await persistenceModule();
+  const tracker = new api.LandmarkPersistence();
+  tracker.stabilizePose(poseFrame(), 1000);
+
+  const handAtShoulder = [{x: 0.4, y: 0.4, z: 0}];
+  const occluded = tracker.stabilizePose(
+    poseFrame({shoulders: false}),
+    2100,
+    {occluderLandmarks: handAtShoulder},
+  );
+  assert.ok(occluded[11]);
+  assert.equal(occluded[12], null);
+
+  const handMovedAway = tracker.stabilizePose(
+    poseFrame({shoulders: false}),
+    2110,
+  );
+  assert.equal(handMovedAway[11], null);
+});
+
 test('pose anchors expire instead of becoming permanent fabricated points', async () => {
   const api = await persistenceModule();
   const tracker = new api.LandmarkPersistence();
@@ -116,6 +137,46 @@ test('face mesh follows the locked head through a brief hand occlusion', async (
   assert.ok(persisted[0][api.PERSISTENCE_CONFIDENCE_KEY] >= 0.35);
 });
 
+test('a hand over the cheek extends face persistence but still expires', async () => {
+  const api = await persistenceModule();
+  const tracker = new api.LandmarkPersistence();
+  const pose = poseFrame();
+  tracker.stabilizeFace(faceFrame(), subject(pose), 1000);
+
+  const covered = tracker.stabilizeFace(
+    [],
+    subject(pose),
+    2300,
+    {occluderLandmarks: [{x: 0.44, y: 0.23, z: 0}]},
+  );
+  assert.equal(covered.length, 468);
+
+  const uncovered = tracker.stabilizeFace([], subject(pose), 2310);
+  assert.equal(uncovered.length, 0);
+});
+
+test('locked face reacquires while pose is briefly unavailable', async () => {
+  const api = await persistenceModule();
+  const lockedButHidden = {
+    ...subject(poseFrame()),
+    visible: false,
+    faceX: 0.44,
+    faceY: 0.23,
+  };
+
+  assert.equal(
+    api.selectLockedFace([faceFrame()], lockedButHidden).length,
+    468,
+  );
+  assert.equal(
+    api.selectLockedFace([faceFrame()], {...lockedButHidden, locked: false})
+      .length,
+    0,
+  );
+  const farFace = faceFrame().map((point) => ({...point, x: point.x + 0.5}));
+  assert.equal(api.selectLockedFace([farFace], lockedButHidden).length, 0);
+});
+
 test('persisted face mesh scales as the locked signer moves closer', async () => {
   const api = await persistenceModule();
   const tracker = new api.LandmarkPersistence();
@@ -141,11 +202,11 @@ test('face persistence expires and reset clears every cached point', async () =>
   const pose = poseFrame();
   tracker.stabilizeFace(faceFrame(), subject(pose), 1000);
 
-  assert.equal(tracker.stabilizeFace([], subject(pose), 1850).length, 0);
+  assert.equal(tracker.stabilizeFace([], subject(pose), 2110).length, 0);
 
-  tracker.stabilizeFace(faceFrame(), subject(pose), 2000);
+  tracker.stabilizeFace(faceFrame(), subject(pose), 2200);
   tracker.reset();
-  assert.equal(tracker.stabilizeFace([], subject(pose), 2100).length, 0);
+  assert.equal(tracker.stabilizeFace([], subject(pose), 2300).length, 0);
 });
 
 test('the browser tracker parses with the persistence integration', () => {

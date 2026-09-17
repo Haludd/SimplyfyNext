@@ -48,13 +48,16 @@ python3 -m http.server 8081 --directory build/web
 ```
 
 The browser tracker keeps the last reliable nose and shoulder anchors for up
-to 0.9 seconds and the locked face mesh for up to 0.85 seconds. Confidence
-fades throughout either gap, and the inferred points expire rather than being
-treated as permanent detections. This lets a hand cross a shoulder or cheek
-without immediately removing the overlay. Camera pixels and Holistic frames
-still remain in the browser. During those bounded gaps, the local classifier
-receives the persisted face and pose anchors together with the live hand
-points, improving continuity for contact signs without a network upload.
+to 0.9 seconds and the locked face mesh for up to 1.1 seconds. When a live hand
+is actually beside the missing shoulder or inside the recent face region, the
+bounded hold can extend to 1.4 seconds for pose anchors and 1.6 seconds for the
+face. Confidence fades throughout every gap, and inferred points expire rather
+than becoming permanent detections. A locked face can also be reacquired while
+pose tracking is briefly unavailable, which helps close-camera framing. Camera
+pixels and Holistic frames remain in the browser. During those bounded gaps,
+the local classifier receives the persisted face and pose anchors together
+with the live hand points, improving continuity for contact signs without a
+network upload.
 
 To verify the tracker locally, cover one shoulder briefly, perform a
 hand-to-cheek sign such as `HOME`, and move slowly toward the camera. The face

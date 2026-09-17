@@ -131,7 +131,7 @@ class ShellMenu extends StatelessWidget {
             ),
           ),
         ),
-        if (checked) const Icon(Icons.check, size: 18, color: Sb.primary),
+        if (checked) const Icon(Icons.check, size: 18, color: Sb.primaryStrong),
       ],
     ),
   );

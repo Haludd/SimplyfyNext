@@ -1,7 +1,10 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../models/room_models.dart';
+import '../services/asl_label_to_english.dart';
 import '../services/room_session_controller.dart';
 import '../services/sign_analysis_service.dart';
 import 'camera_stage.dart';
@@ -120,15 +123,15 @@ class _TranslationPanel extends StatelessWidget {
     final sending = controller.isUtteranceSubmissionInFlight;
     final sentence = _latestOwnSentence(room);
     final caption = _caption(words, sentence, sending);
-    final signList = words.isNotEmpty
-        ? words
-        : (controller.visibleAnalysis?.glossTrace ?? const <String>[]);
-    final confidence =
-        controller.visibleAnalysis?.confidence ?? controller.confidence;
-    final showConfidence =
-        controller.devices.cameraReady && controller.visibleAnalysis != null;
+    final analysis = controller.visibleAnalysis;
+    final candidates = _topCandidates(analysis);
+    final confidence = analysis?.confidence ?? controller.confidence;
+    // A captured analysis is itself proof a sign was just read, so it is
+    // shown on its own — no separate camera-state check needed.
+    final showAnalysisRow = analysis != null;
     final note = _actionableStatus(controller);
     final canSend = controller.canCommitTranslatedUtterance && !sending;
+    final canDeleteWord = words.isNotEmpty;
 
     return FractionallySizedBox(
       widthFactor: .9,
@@ -138,68 +141,24 @@ class _TranslationPanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            if (controller.hasPendingTranslatedWords)
-              _PendingWordReview(controller: controller),
-            Container(
+            _GlassCaption(
               key: const ValueKey<String>('translated-utterance-buffer'),
-              padding: const EdgeInsets.fromLTRB(18, 15, 10, 15),
-              decoration: BoxDecoration(
-                color: Sb.overlay,
-                borderRadius: BorderRadius.circular(Sb.radiusLarge),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      caption.text,
-                      key: const ValueKey<String>('live-translation-text'),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 19,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                        color: caption.muted ? Sb.textMuted : Sb.text,
-                      ),
-                    ),
-                  ),
-                  if (!caption.muted)
-                    IconButton(
-                      tooltip: 'Read aloud',
-                      onPressed: () =>
-                          controller.textToSpeech.speak(caption.text),
-                      icon: const Icon(
-                        Icons.volume_up_outlined,
-                        size: 20,
-                        color: Sb.textMuted,
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 8),
-                ],
-              ),
+              text: caption.text,
+              muted: caption.muted,
+              canDeleteWord: canDeleteWord,
+              onDeleteWord: () =>
+                  controller.removeTranslatedWordAt(words.length - 1),
+              onTap: () => _openWordEditor(context),
             ),
-            const SizedBox(height: 10),
-            if (showConfidence)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 4),
-                child: Row(
-                  children: <Widget>[
-                    ConfidenceDot(confidence: confidence),
-                    const SizedBox(width: 7),
-                    Text(
-                      'Confidence: ${Sb.percent(confidence)}',
-                      style: _metaStyle,
-                    ),
-                  ],
+            const SizedBox(height: 9),
+            if (showAnalysisRow)
+              _AnalysisRow(
+                candidates: candidates,
+                confidence: confidence,
+                onPick: (candidate) => controller.addHypothesisWord(
+                  candidate.label,
+                  candidate.confidence,
                 ),
-              ),
-            if (signList.isNotEmpty)
-              _SignListLine(
-                signs: signList,
-                editable: words.isNotEmpty,
-                onEdit: () => _openWordEditor(context),
               ),
             if (note != null)
               Padding(
@@ -218,46 +177,53 @@ class _TranslationPanel extends StatelessWidget {
                   ),
                 ),
               ),
-            if (words.isNotEmpty || sending) ...<Widget>[
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  CameraIconButton(
-                    icon: Icons.backspace_outlined,
-                    tooltip: 'Clear the sentence',
-                    onPressed: controller.canClearTranslatedUtterance
-                        ? controller.clearCaption
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                CameraIconButton(
+                  icon: Icons.volume_up_rounded,
+                  tooltip: 'Read the sentence aloud',
+                  onPressed: caption.muted
+                      ? null
+                      : () => controller.textToSpeech.speak(caption.text),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    key: const ValueKey<String>(
+                      'commit-translated-utterance',
+                    ),
+                    onPressed: canSend
+                        ? controller.commitTranslatedUtterance
                         : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      key: const ValueKey<String>(
-                        'commit-translated-utterance',
-                      ),
-                      onPressed: canSend
-                          ? controller.commitTranslatedUtterance
-                          : null,
-                      icon: sending
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.arrow_upward_rounded, size: 20),
-                      label: Text(
-                        sending
-                            ? 'Sending…'
-                            : 'Send ${words.length} word${words.length == 1 ? '' : 's'}',
-                      ),
+                    icon: sending
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Sb.text,
+                            ),
+                          )
+                        : const Icon(Icons.arrow_upward_rounded, size: 20),
+                    label: Text(
+                      sending
+                          ? 'Sending…'
+                          : 'Send ${words.length} word${words.length == 1 ? '' : 's'}',
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 10),
+                CameraIconButton(
+                  key: const ValueKey<String>('reset-translated-utterance'),
+                  icon: Icons.delete_sweep_outlined,
+                  tooltip: 'Clear the entire sentence',
+                  onPressed: controller.canClearTranslatedUtterance
+                      ? controller.clearCaption
+                      : null,
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -338,113 +304,224 @@ class _Caption {
   final bool muted;
 }
 
-/// Small light-on-video text for the two lines under the caption.
+/// Small light-on-video text for the meta line under the caption.
 const TextStyle _metaStyle = TextStyle(
   color: Colors.white,
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: FontWeight.w500,
   shadows: <Shadow>[Shadow(color: Colors.black45, blurRadius: 6)],
 );
 
-
-class _SignListLine extends StatelessWidget {
-  const _SignListLine({
-    required this.signs,
-    required this.editable,
-    required this.onEdit,
+/// The main caption: an iOS-style frosted glass panel over the live video,
+/// with one icon that trims the sentence back a word at a time.
+class _GlassCaption extends StatelessWidget {
+  const _GlassCaption({
+    super.key,
+    required this.text,
+    required this.muted,
+    required this.canDeleteWord,
+    required this.onDeleteWord,
+    required this.onTap,
   });
 
-  final List<String> signs;
-  final bool editable;
-  final VoidCallback onEdit;
+  final String text;
+  final bool muted;
+  final bool canDeleteWord;
+  final VoidCallback onDeleteWord;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final line = Padding(
-      padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Text(
-              'Sign: ${signs.join(', ')}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _metaStyle,
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(Sb.radiusLarge),
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .30),
+          borderRadius: BorderRadius.circular(Sb.radiusLarge),
+          border: Border.all(color: Colors.white.withValues(alpha: .55)),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(Sb.radiusLarge),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 13, 8, 13),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      text,
+                      key: const ValueKey<String>('live-translation-text'),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: muted ? Sb.textMuted : Sb.text,
+                      ),
+                    ),
+                  ),
+                  if (canDeleteWord)
+                    IconButton(
+                      key: const ValueKey<String>(
+                        'delete-last-translated-word',
+                      ),
+                      tooltip: 'Remove the last word',
+                      onPressed: onDeleteWord,
+                      icon: const Icon(
+                        Icons.backspace_outlined,
+                        size: 19,
+                        color: Sb.textMuted,
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 8),
+                ],
+              ),
             ),
           ),
-          if (editable)
-            const Icon(Icons.tune, size: 15, color: Colors.white70),
-        ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// One raw model hypothesis, with the contract-safe English text it would add
+/// to the sentence if picked.
+class _Candidate {
+  const _Candidate({
+    required this.label,
+    required this.confidence,
+    required this.display,
+  });
+
+  /// The raw ASL gloss label, e.g. `thankyou`. Sent to
+  /// [AppController.addHypothesisWord], which re-translates it.
+  final String label;
+  final double confidence;
+
+  /// The English word(s) shown on the chip, e.g. `THANK YOU`.
+  final String display;
+}
+
+const AslLabelToEnglish _labelTranslator = AslLabelToEnglish();
+
+/// The top 3 recognition hypotheses for the sign currently on screen, highest
+/// confidence first.
+List<_Candidate> _topCandidates(SignAnalysisResult? analysis) {
+  final hypotheses = analysis?.hypotheses ?? const <Map<String, dynamic>>[];
+  final sorted = List<Map<String, dynamic>>.of(hypotheses)
+    ..sort((a, b) {
+      final confidenceA = (a['confidence'] as num?)?.toDouble() ?? 0;
+      final confidenceB = (b['confidence'] as num?)?.toDouble() ?? 0;
+      return confidenceB.compareTo(confidenceA);
+    });
+  final candidates = <_Candidate>[];
+  for (final hypothesis in sorted) {
+    final label = hypothesis['word']?.toString();
+    if (label == null || label.isEmpty) continue;
+    final confidence = (hypothesis['confidence'] as num?)?.toDouble() ?? 0;
+    candidates.add(
+      _Candidate(
+        label: label,
+        confidence: confidence,
+        display: _candidateDisplay(label),
       ),
     );
-    // Tapping always opens the sentence sheet, which is also where a
-    // low-confidence read-out explains why nothing was added.
-    return InkWell(
-      onTap: onEdit,
-      borderRadius: BorderRadius.circular(8),
-      child: line,
-    );
+    if (candidates.length == 3) break;
+  }
+  return candidates;
+}
+
+String _candidateDisplay(String label) {
+  try {
+    return _labelTranslator.translateLabel(label).join(' ');
+  } on ArgumentError {
+    return label.toUpperCase();
   }
 }
 
-class _PendingWordReview extends StatelessWidget {
-  const _PendingWordReview({required this.controller});
+/// "Sign:" and "Confidence:" on one line — the recognised candidates for the
+/// current sign on the left (tap one to add it), the confidence of the top
+/// candidate on the right.
+class _AnalysisRow extends StatelessWidget {
+  const _AnalysisRow({
+    required this.candidates,
+    required this.confidence,
+    required this.onPick,
+  });
 
-  final AppController controller;
+  final List<_Candidate> candidates;
+  final double confidence;
+  final ValueChanged<_Candidate> onPick;
 
   @override
-  Widget build(BuildContext context) {
-    final words = controller.pendingTranslatedWords;
-    final confidence = controller.pendingTranslatedWordConfidence;
-    return Container(
-      key: const ValueKey<String>('pending-translated-words-review'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: Sb.overlay,
-        borderRadius: BorderRadius.circular(Sb.radius),
-        border: Border.all(color: Sb.warn.withValues(alpha: .55)),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  words.join(' '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        const Text('Sign:', style: _metaStyle),
+        const SizedBox(width: 7),
+        Expanded(
+          child: candidates.isEmpty
+              ? const Text('—', style: _metaStyle)
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: <Widget>[
+                      for (var i = 0; i < candidates.length; i += 1) ...<Widget>[
+                        if (i > 0) const SizedBox(width: 6),
+                        _CandidateChip(
+                          candidate: candidates[i],
+                          onTap: () => onPick(candidates[i]),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                Text(
-                  confidence == null
-                      ? 'Low confidence · add it?'
-                      : '${Sb.percent(confidence)} confident · add it?',
-                  style: const TextStyle(color: Sb.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
+        ),
+        const SizedBox(width: 10),
+        ConfidenceDot(confidence: confidence),
+        const SizedBox(width: 6),
+        Text('Confidence: ${Sb.percent(confidence)}', style: _metaStyle),
+      ],
+    ),
+  );
+}
+
+class _CandidateChip extends StatelessWidget {
+  const _CandidateChip({required this.candidate, required this.onTap});
+
+  final _Candidate candidate;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white.withValues(alpha: .26),
+    borderRadius: BorderRadius.circular(999),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      key: ValueKey<String>('sign-candidate-${candidate.label}'),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Text(
+          '${candidate.display} ${Sb.percent(candidate.confidence)}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            shadows: <Shadow>[Shadow(color: Colors.black45, blurRadius: 5)],
           ),
-          IconButton(
-            key: const ValueKey<String>('discard-pending-translated-words'),
-            tooltip: 'Ignore',
-            onPressed: controller.discardPendingTranslatedWords,
-            icon: const Icon(Icons.close, color: Sb.textMuted),
-          ),
-          IconButton(
-            key: const ValueKey<String>('add-pending-translated-words'),
-            tooltip: 'Add to the sentence',
-            onPressed: controller.addPendingTranslatedWords,
-            icon: const Icon(Icons.check, color: Sb.primary),
-          ),
-        ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// Removes individual words and shows exactly what a send would transmit.
@@ -572,7 +649,6 @@ class _WordEditor extends StatelessWidget {
   }
 }
 
-
 /// The per-sign recogniser read-out.
 ///
 /// It is diagnostic rather than conversational, so it lives in the sentence
@@ -624,7 +700,7 @@ class RecognitionDetails extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            facts.join(' \u00b7 '),
+            facts.join(' · '),
             style: const TextStyle(color: Sb.textMuted, fontSize: 12),
           ),
           if (analysis.hypotheses.isNotEmpty) ...<Widget>[
@@ -654,7 +730,7 @@ class RecognitionDetails extends StatelessWidget {
           if (analysis.glossTrace.isNotEmpty) ...<Widget>[
             const SizedBox(height: 6),
             Text(
-              'Gloss: ${analysis.glossTrace.join(' \u00b7 ')}',
+              'Gloss: ${analysis.glossTrace.join(' · ')}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Sb.textFaint, fontSize: 11),
@@ -688,4 +764,4 @@ String recognitionAlternativesText(List<Map<String, dynamic>> hypotheses) =>
               : ' ${(confidence * 100).round()}%';
           return '$label$percent';
         })
-        .join('  \u00b7  ');
+        .join('  ·  ');

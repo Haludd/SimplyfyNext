@@ -263,7 +263,8 @@ class _MessageBubble extends StatelessWidget {
         : mine
         ? Sb.primary
         : Sb.surface;
-    final foreground = mine && !repair ? Colors.white : Sb.text;
+    // Sb.primary is too light for white text; dark text stays legible on it.
+    final foreground = Sb.text;
     final caption = _caption(message);
     // The hearing participant hears incoming messages automatically; this
     // repeats one on demand.
@@ -522,7 +523,8 @@ class _SendButton extends StatelessWidget {
           child: Icon(
             Icons.arrow_upward_rounded,
             size: 22,
-            color: enabled ? Colors.white : Sb.textFaint,
+            // Sb.primary is too light for a white icon to read on.
+            color: enabled ? Sb.text : Sb.textFaint,
           ),
         ),
       ),

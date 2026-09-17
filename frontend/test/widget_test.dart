@@ -105,10 +105,51 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Sign a word to begin'), findsOneWidget);
-    expect(find.text('Sign: hello'), findsOneWidget);
+    // Only one box shows the accepted sentence; the candidates for the
+    // current sign are clickable chips below it, ranked by confidence, with
+    // "Sign:" and "Confidence:" sharing one line.
+    expect(
+      find.byKey(const ValueKey<String>('pending-translated-words-review')),
+      findsNothing,
+    );
+    expect(find.text('HELLO 81%'), findsOneWidget);
+    expect(find.text('PLEASE 12%'), findsOneWidget);
+    expect(find.text('Confidence: 81%'), findsOneWidget);
     // Without a room there is nowhere to send a sentence, and the screen says
     // exactly that instead of printing backend chatter.
     expect(find.text('Start a room before sending a sentence.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('tapping a sign candidate adds it to the sentence', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final controller = await _controller();
+    controller.latestAnalysis = const SignAnalysisResult(
+      status: 'candidate',
+      gestureLabel: 'please',
+      caption: 'Possible sign: please (55%)',
+      confidence: .55,
+      glossTrace: <String>[],
+      hypotheses: <Map<String, dynamic>>[
+        <String, dynamic>{'word': 'please', 'confidence': .55},
+      ],
+      modelVersion: 'signchat_asl_signs_onnx',
+    );
+    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign a word to begin'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sign-candidate-please')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('PLEASE'), findsOneWidget);
+    expect(controller.translatedWords, <String>['PLEASE']);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

@@ -841,6 +841,42 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Appends one of the currently visible recognition candidates by hand,
+  /// translating its raw ASL label into contract-safe English word(s). This
+  /// is how the signer picks a lower-ranked (or below-threshold) hypothesis
+  /// instead of waiting for the top one to clear the confidence gate.
+  void addHypothesisWord(String label, double confidence) {
+    if (_pendingUtterance != null) {
+      backendStatus =
+          'The current sentence is still being sent · wait for Send sentence to finish';
+      notifyListeners();
+      return;
+    }
+    try {
+      final words = _englishTranslator.translateLabel(label);
+      // The pick already resolves this sign; an automatic pending review of
+      // the same captured sign would otherwise still be waiting behind it.
+      _pendingTranslatedWords = null;
+      _appendTranslatedWords(
+        _PendingTranslatedWords(
+          words: words,
+          confidence: confidence,
+          producer: _producerForModel(
+            latestAnalysis?.modelVersion ?? 'signchat_asl_signs_onnx',
+          ),
+          alternatives: const <EnglishLabelAlternative>[],
+        ),
+      );
+      backendStatus = _bufferedWordsStatus(words);
+    } on ArgumentError {
+      backendStatus = 'That candidate has no supported English translation';
+    } on TranslatedSignUtteranceValidationException {
+      backendStatus =
+          'This sentence already has ${TranslatedSignUtteranceContract.maxWords} words · send it or remove a word before adding more';
+    }
+    notifyListeners();
+  }
+
   void _dismissPendingForNextSign() {
     if (_pendingTranslatedWords == null) return;
     _pendingTranslatedWords = null;
@@ -1155,15 +1191,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  TranslatedSignUtteranceProducer _producerFor(AslRecognitionResult result) {
-    final isPersonalTemplate = result.modelVersion.startsWith(
+  TranslatedSignUtteranceProducer _producerFor(AslRecognitionResult result) =>
+      _producerForModel(result.modelVersion);
+
+  TranslatedSignUtteranceProducer _producerForModel(String modelVersion) {
+    final isPersonalTemplate = modelVersion.startsWith(
       'personal_landmark_templates',
     );
     return TranslatedSignUtteranceProducer(
       recognizerId: isPersonalTemplate
           ? 'personal_landmark_templates'
           : 'signchat_asl_signs_onnx',
-      recognizerVersion: result.modelVersion,
+      recognizerVersion: modelVersion,
       translatorId: 'asl_label_to_english',
       translatorVersion: '1.0.0',
       vocabularyVersion: isPersonalTemplate

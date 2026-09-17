@@ -202,7 +202,8 @@ class _SpeechCaptions extends StatelessWidget {
 
   static Color _statusColor(SpeechServiceStatus status) => switch (status) {
     SpeechServiceStatus.ready => Sb.good,
-    SpeechServiceStatus.starting || SpeechServiceStatus.listening => Sb.primary,
+    SpeechServiceStatus.starting ||
+    SpeechServiceStatus.listening => Sb.primaryStrong,
     SpeechServiceStatus.unavailable || SpeechServiceStatus.error => Sb.bad,
     SpeechServiceStatus.uninitialized ||
     SpeechServiceStatus.initializing ||

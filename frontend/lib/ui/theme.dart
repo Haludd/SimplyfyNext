@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 /// Design tokens for the SignBridge interface.
 ///
-/// The app is intentionally light, quiet, and typographic: white surfaces, one
-/// periwinkle accent, and colour reserved for signal (confidence, errors). Any
-/// screen that shows the camera inverts this and paints its few controls on
-/// translucent light chips so the video stays the subject.
+/// The app is intentionally light, quiet, and typographic: white surfaces, a
+/// sky-blue accent pair, and colour reserved for signal (confidence, errors).
+/// Any screen that shows the camera inverts this and paints its few controls
+/// on translucent light chips so the video stays the subject.
 abstract final class Sb {
   // Surfaces
   static const background = Color(0xFFFFFFFF);
@@ -13,28 +13,34 @@ abstract final class Sb {
   static const surfaceStrong = Color(0xFFE6E8ED);
   static const border = Color(0xFFE4E6EB);
 
-  // Brand
-  static const primary = Color(0xFF6C7CFF);
-  static const primarySoft = Color(0xFF9AA4FF);
+  // Brand — the darker of the two sky blues fills interactive surfaces
+  // (buttons, the send bubble); the lighter one is its calmer companion for
+  // secondary chips and highlights. Both are pastel, so neither is dark
+  // enough for text or an icon to sit directly on white — primaryStrong is
+  // the same hue deepened until it reads as real text (5.2:1 on white).
+  static const primary = Color(0xFF89C2D9);
+  static const primarySoft = Color(0xFFA9D6E5);
+  static const primaryStrong = Color(0xFF2C7496);
 
   // Text
   static const text = Color(0xFF0B0D12);
   static const textMuted = Color(0xFF8A8F9A);
   static const textFaint = Color(0xFFB2B7C0);
 
-  // Signal
-  static const good = Color(0xFF2FBF71);
-  static const warn = Color(0xFFF2A33C);
-  static const bad = Color(0xFFE5484D);
+  // Signal — same soft, mid-light saturation as the brand blues so a
+  // confidence dot or a warning reads as part of one palette, not a clash.
+  static const good = Color(0xFF52B788);
+  static const warn = Color(0xFFE3A857);
+  static const bad = Color(0xFFE2707A);
 
   // Camera overlay
   static const overlay = Color(0xE8FFFFFF);
   static const overlayChip = Color(0xB3FFFFFF);
   static const cameraVoid = Color(0xFF12151C);
 
-  // Landmarks keep the high-contrast accents that read well over live video.
-  static const trackingPrimary = Color(0xFF4EDDEA);
-  static const trackingSecondary = Color(0xFF70E2B3);
+  // Landmarks use the same accent pair as the rest of the app.
+  static const trackingPrimary = Color(0xFF89C2D9);
+  static const trackingSecondary = Color(0xFFA9D6E5);
 
   static const radius = 16.0;
   static const radiusLarge = 22.0;
@@ -54,8 +60,11 @@ abstract final class Sb {
 ThemeData signBridgeTheme() {
   const scheme = ColorScheme.light(
     primary: Sb.primary,
-    onPrimary: Colors.white,
+    // The accent is a light sky blue, too pale for white text to sit on
+    // legibly — dark text/icons stay readable on it at every size.
+    onPrimary: Sb.text,
     secondary: Sb.primarySoft,
+    onSecondary: Sb.text,
     surface: Sb.background,
     onSurface: Sb.text,
     error: Sb.bad,
@@ -106,7 +115,7 @@ ThemeData signBridgeTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(Sb.radius),
-        borderSide: const BorderSide(color: Sb.primary, width: 1.5),
+        borderSide: const BorderSide(color: Sb.primaryStrong, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(Sb.radius),
@@ -120,7 +129,8 @@ ThemeData signBridgeTheme() {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: Sb.primary,
-        foregroundColor: Colors.white,
+        // Dark text: the accent is too light for white to read on.
+        foregroundColor: Sb.text,
         disabledBackgroundColor: Sb.surfaceStrong,
         disabledForegroundColor: Sb.textFaint,
         minimumSize: const Size.fromHeight(52),
@@ -132,7 +142,8 @@ ThemeData signBridgeTheme() {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: Sb.primary,
+        // primaryStrong, not primary: this renders as text on white.
+        foregroundColor: Sb.primaryStrong,
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
     ),
@@ -158,7 +169,7 @@ ThemeData signBridgeTheme() {
         (states) => IconThemeData(
           size: 24,
           color: states.contains(WidgetState.selected)
-              ? Sb.primary
+              ? Sb.primaryStrong
               : Sb.textMuted,
         ),
       ),
@@ -167,7 +178,7 @@ ThemeData signBridgeTheme() {
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: states.contains(WidgetState.selected)
-              ? Sb.primary
+              ? Sb.primaryStrong
               : Sb.textMuted,
         ),
       ),

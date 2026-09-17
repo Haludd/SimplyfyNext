@@ -58,9 +58,9 @@ class CustomSignBackupRestoreResult {
 }
 
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
-  /// The recognizer can be useful below its normal high-confidence range, but
-  /// those words require the signer to explicitly include or ignore them.
-  static const double _manualReviewConfidenceThreshold = .75;
+  /// Keep automatic buffering aligned with the browser classifier and backend
+  /// word policy. Results below this boundary remain available for review.
+  static const double _manualReviewConfidenceThreshold = .40;
 
   AppController(
     this._localState,

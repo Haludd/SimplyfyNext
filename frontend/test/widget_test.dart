@@ -23,6 +23,15 @@ Future<AppController> _controller() async {
 Widget _host(Widget child) =>
     MaterialApp(theme: signBridgeTheme(), home: Scaffold(body: child));
 
+/// Mirrors the production AppShell, which rebuilds the active screen whenever
+/// the app controller or camera-device state changes.
+Widget _signHost(AppController controller) => _host(
+  AnimatedBuilder(
+    animation: Listenable.merge(<Listenable>[controller, controller.devices]),
+    builder: (context, _) => SignScreen(controller: controller),
+  ),
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -40,7 +49,7 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final controller = await _controller();
-    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpWidget(_signHost(controller));
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Restart camera'), findsOneWidget);
@@ -125,7 +134,7 @@ void main() {
       ],
       modelVersion: 'signchat_asl_signs_onnx',
     );
-    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpWidget(_signHost(controller));
     await tester.pumpAndSettle();
 
     expect(
@@ -199,7 +208,7 @@ void main() {
       ],
       modelVersion: 'signchat_asl_signs_onnx',
     );
-    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpWidget(_signHost(controller));
     await tester.pumpAndSettle();
 
     expect(find.text('Sign a word to begin'), findsOneWidget);
@@ -231,7 +240,7 @@ void main() {
       ],
       modelVersion: 'signchat_asl_signs_onnx',
     );
-    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpWidget(_signHost(controller));
     await tester.pumpAndSettle();
 
     Color? cardColor() => (tester
@@ -280,7 +289,7 @@ void main() {
         ],
         modelVersion: 'signchat_asl_signs_onnx',
       );
-      await tester.pumpWidget(_host(SignScreen(controller: controller)));
+      await tester.pumpWidget(_signHost(controller));
       await tester.pumpAndSettle();
 
       await tester.tap(

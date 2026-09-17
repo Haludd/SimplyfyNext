@@ -296,7 +296,7 @@ class SheetTitle extends StatelessWidget {
             ),
           ),
         ),
-        if (trailing != null) trailing!,
+        ?trailing,
       ],
     ),
   );

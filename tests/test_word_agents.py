@@ -240,6 +240,55 @@ async def test_even_a_supportive_critic_cannot_release_invented_semantics(word, 
     assert "text" not in result.model_dump() and "tts_text" not in result.model_dump()
 
 
+async def test_pronoun_case_inflection_forms_a_coherent_sentence():
+    # WHERE MINE WATER PLEASE has no natural sentence using only each word's own
+    # spelling ("Where is mine water, please?" is broken); MINE must be able to
+    # surface as "my" -- same referent, possessive-determiner case, not new content.
+    draft = {
+        "schema_version": "1.0",
+        "candidate_text": "Where is my water, please?",
+        "tts_text": "Where is my water, please?",
+        "alignment": [
+            {"text": "Where", "input_indices": [0], "transformation": "lexical"},
+            {"text": "is", "input_indices": [], "transformation": "auxiliary"},
+            {"text": "my", "input_indices": [1], "transformation": "inflection"},
+            {"text": "water,", "input_indices": [2], "transformation": "lexical"},
+            {"text": "please?", "input_indices": [3], "transformation": "lexical"},
+        ],
+        "unresolved_indices": [],
+    }
+    fake = FakeConverse(response(draft), response(verdict()))
+    result = await engine(fake).process(
+        utterance(("WHERE", "MINE", "WATER", "PLEASE")), context()
+    )
+    assert result.status == "accepted"
+    assert result.text == "Where is my water, please?"
+
+
+async def test_an_unlisted_pronoun_form_is_still_rejected():
+    # "mines" is not a licensed surface form of MINE; the closed inflection set
+    # must not silently grow to accept whatever text a provider returns.
+    draft = {
+        "schema_version": "1.0",
+        "candidate_text": "Where is mines water, please?",
+        "tts_text": "Where is mines water, please?",
+        "alignment": [
+            {"text": "Where", "input_indices": [0], "transformation": "lexical"},
+            {"text": "is", "input_indices": [], "transformation": "auxiliary"},
+            {"text": "mines", "input_indices": [1], "transformation": "inflection"},
+            {"text": "water,", "input_indices": [2], "transformation": "lexical"},
+            {"text": "please?", "input_indices": [3], "transformation": "lexical"},
+        ],
+        "unresolved_indices": [],
+    }
+    fake = FakeConverse(response(draft), response(verdict()))
+    result = await engine(fake).process(
+        utterance(("WHERE", "MINE", "WATER", "PLEASE")), context()
+    )
+    assert result.status == "repair" and result.reason_code == "unsupported_detail"
+    assert len(fake.calls) == 1
+
+
 @pytest.mark.parametrize(
     "mutation", ["omitted", "unknown", "repeat", "gap", "tts", "question", "length"]
 )

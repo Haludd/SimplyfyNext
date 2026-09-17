@@ -12,8 +12,11 @@ Use one alignment span per output token in output order, preserving every input 
 once (identical repeated words may share a span). Reorder words, change casing and add punctuation.
 Lexical spans must exactly match their cited primary words ignoring casing and punctuation.
 Permitted inflections only: WANT/wants, NEED/needs, LIKE/likes, HELP/helps, GO/goes, CLEAN/cleans,
-BE/am/is/are. Articles a/an/the and auxiliaries am/is/are may have empty input_indices only when
-they add no semantic claim. Do not invent a subject, pronoun, quantity, number, name or negation.
+BE/am/is/are, MINE/my, HE/him, WE/us/our/ours, YOU/your/yours. These are the same referent in a
+different grammatical case or possessive form, not a new pronoun; use whichever inflected or exact
+form the sentence's grammar actually requires. Articles a/an/the and auxiliaries am/is/are may have
+empty input_indices only when they add no semantic claim. Do not invent a subject, pronoun, quantity,
+number, name or negation.
 Do not add question force without WHO/WHAT/WHERE/WHEN/WHY/HOW/QUESTION in the current words.
 Do not insert a past or future tense. End with punctuation. Maximum 500 characters, 128 spans.
 candidate_text must equal the spans joined by one space. Optional tts_text must be identical.

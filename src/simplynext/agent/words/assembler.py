@@ -44,6 +44,14 @@ _INFLECTIONS = {
     "GO": {"goes"},
     "CLEAN": {"cleans"},
     "BE": {"am", "is", "are"},
+    # Pure grammatical case of a pronoun already signed, not new content: the
+    # sign for MINE/HE/WE/YOU names one referent, and English spells that same
+    # referent differently depending on its role in the sentence (subject,
+    # object, possessive determiner, possessive pronoun).
+    "MINE": {"my"},
+    "HE": {"him"},
+    "WE": {"us", "our", "ours"},
+    "YOU": {"your", "yours"},
 }
 
 

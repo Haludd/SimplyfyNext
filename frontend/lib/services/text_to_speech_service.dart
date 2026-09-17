@@ -5,7 +5,9 @@ import 'package:flutter_tts/flutter_tts.dart';
 /// This is deliberately separate from sign capture: the next processing stage
 /// can pass its returned `tts_text` to [speak].
 class TextToSpeechService {
-  TextToSpeechService({FlutterTts? engine}) : _engine = engine ?? FlutterTts();
+  TextToSpeechService({FlutterTts? engine}) : _engine = engine ?? FlutterTts() {
+    _configureHandlers();
+  }
 
   /// The voice profile used by this app.
   ///
@@ -19,30 +21,55 @@ class TextToSpeechService {
 
   final FlutterTts _engine;
   bool _isDisposed = false;
-  bool _voiceConfigured = false;
+  bool _engineConfigured = false;
   Map<String, String>? _selectedVoice;
+  bool _isSpeaking = false;
+
+  /// Most Web Speech API voices cut the audio output stream the instant the
+  /// last phoneme ends, which browsers render as an audible click. Speaking
+  /// a hair of trailing silence gives the engine somewhere to fade into
+  /// instead of stopping cold, and it is inaudible on every platform tested.
+  static const String _trailingSilence = '​';
 
   Future<void> speak(String text) async {
     _ensureNotDisposed();
     final value = text.trim();
     if (value.isEmpty) return;
 
-    await _engine.stop();
-    if (!_voiceConfigured) {
-      await _engine.setLanguage(preferredVoiceLocale);
-      await _configurePreferredVoice();
-    } else if (_selectedVoice != null) {
-      // Some platforms reset the voice when a new utterance starts.
-      try {
-        await _engine.setVoice(_selectedVoice!);
-      } catch (_) {
-        // Keep speaking with the platform's already-selected fallback voice.
-      }
+    // Cancelling speech that is not in progress produces the same abrupt
+    // click as cancelling mid-utterance on some browsers, so this only stops
+    // the engine when it is actually speaking.
+    if (_isSpeaking) await _engine.stop();
+    await _configureEngine();
+    await _engine.speak('$value$_trailingSilence');
+  }
+
+  /// One-time setup: everything here used to run before every single
+  /// utterance, which reset the underlying engine that much more often and
+  /// made the end-of-speech click more frequent.
+  Future<void> _configureEngine() async {
+    if (_engineConfigured) return;
+    _engineConfigured = true;
+    // Lets `stop()`/dispose() know speech has actually finished instead of
+    // only firing-and-forgetting; also avoids overlapping utterances, a
+    // second common source of an audible click when one cuts off another.
+    try {
+      await _engine.awaitSpeakCompletion(true);
+    } catch (_) {
+      // Not supported on every platform; speech still works without it.
     }
+    await _engine.setLanguage(preferredVoiceLocale);
+    await _configurePreferredVoice();
     await _engine.setSpeechRate(.48);
     await _engine.setPitch(1.0);
     await _engine.setVolume(1.0);
-    await _engine.speak(value);
+  }
+
+  void _configureHandlers() {
+    _engine.setStartHandler(() => _isSpeaking = true);
+    _engine.setCompletionHandler(() => _isSpeaking = false);
+    _engine.setCancelHandler(() => _isSpeaking = false);
+    _engine.setErrorHandler((_) => _isSpeaking = false);
   }
 
   /// Selects the same named voice for every utterance in this app session.
@@ -51,8 +78,6 @@ class TextToSpeechService {
   /// Samantha on a device that does not have it. In that case setLanguage()
   /// above has already selected the device's en-US voice as a fallback.
   Future<void> _configurePreferredVoice() async {
-    if (_voiceConfigured) return;
-
     try {
       final rawVoices = await _engine.getVoices;
       if (rawVoices is List) {
@@ -74,14 +99,13 @@ class TextToSpeechService {
       }
     } catch (_) {
       // Keep the en-US language fallback if voice selection is unsupported.
-    } finally {
-      _voiceConfigured = true;
     }
   }
 
   Future<void> stop() async {
     if (_isDisposed) return;
     await _engine.stop();
+    _isSpeaking = false;
   }
 
   Future<void> dispose() async {

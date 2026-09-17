@@ -44,13 +44,24 @@ class SignScreen extends StatelessWidget {
                 Positioned(
                   top: 8,
                   right: Sb.gutter - 8,
-                  child: ShellMenu(
-                    appController: controller,
-                    room: room,
-                    onSelectTab: onSelectTab ?? (_) {},
-                    cameraActions: true,
-                    signActions: true,
-                    onCamera: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      CameraIconButton(
+                        icon: Icons.refresh,
+                        tooltip: 'Restart camera',
+                        onPressed: () => controller.restartCamera(),
+                      ),
+                      const SizedBox(width: 8),
+                      ShellMenu(
+                        appController: controller,
+                        room: room,
+                        onSelectTab: onSelectTab ?? (_) {},
+                        cameraActions: true,
+                        signActions: true,
+                        onCamera: true,
+                      ),
+                    ],
                   ),
                 ),
                 Positioned(

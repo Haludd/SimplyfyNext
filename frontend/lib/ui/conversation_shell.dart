@@ -98,6 +98,22 @@ class _ConversationShellState extends State<ConversationShell> {
         ],
       ),
       actions: <Widget>[
+        // audioEnabled is a per-device setting that only ever gates this
+        // device's own incoming-message speech, which only fires for the
+        // hearing participant — showing it to the signer would toggle
+        // nothing on their own screen.
+        if (room.isHearing)
+          IconButton(
+            tooltip: widget.appController.audioEnabled
+                ? 'Mute spoken messages'
+                : 'Unmute spoken messages',
+            onPressed: widget.appController.toggleAudio,
+            icon: Icon(
+              widget.appController.audioEnabled
+                  ? Icons.volume_up_rounded
+                  : Icons.volume_off_rounded,
+            ),
+          ),
         ShellMenu(
           appController: widget.appController,
           room: room,

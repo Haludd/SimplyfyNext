@@ -26,6 +26,34 @@ Widget _host(Widget child) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('confidence colours follow the 40%/30% gate', () {
+    expect(Sb.confidenceColor(.81), Sb.good);
+    expect(Sb.confidenceColor(.40), Sb.good);
+    expect(Sb.confidenceColor(.35), Sb.warn);
+    expect(Sb.confidenceColor(.30), Sb.warn);
+    expect(Sb.confidenceColor(.29), Sb.bad);
+    expect(Sb.confidenceColor(.10), Sb.bad);
+  });
+
+  testWidgets('a dedicated reload button sits left of the overflow menu', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final controller = await _controller();
+    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Restart camera'), findsOneWidget);
+    expect(find.byTooltip('More options'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byTooltip('Restart camera')).dx,
+      lessThan(tester.getCenter(find.byTooltip('More options')).dx),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
   testWidgets('the lobby asks for a name and offers both ways in', (
     tester,
   ) async {

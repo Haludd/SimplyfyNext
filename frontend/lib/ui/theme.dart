@@ -47,9 +47,9 @@ abstract final class Sb {
   static const gutter = 20.0;
 
   /// Traffic-light colour for a 0..1 confidence value.
-  static Color confidenceColor(double value) => value >= .80
+  static Color confidenceColor(double value) => value >= .40
       ? good
-      : value >= .60
+      : value >= .30
       ? warn
       : bad;
 

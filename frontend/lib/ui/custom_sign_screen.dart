@@ -83,12 +83,23 @@ class _CustomSignScreenState extends State<CustomSignScreen> {
                 Positioned(
                   top: 8,
                   right: Sb.gutter - 8,
-                  child: ShellMenu(
-                    appController: controller,
-                    room: widget.room,
-                    onSelectTab: widget.onSelectTab ?? (_) {},
-                    cameraActions: true,
-                    onCamera: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      CameraIconButton(
+                        icon: Icons.refresh,
+                        tooltip: 'Restart camera',
+                        onPressed: () => controller.restartCamera(),
+                      ),
+                      const SizedBox(width: 8),
+                      ShellMenu(
+                        appController: controller,
+                        room: widget.room,
+                        onSelectTab: widget.onSelectTab ?? (_) {},
+                        cameraActions: true,
+                        onCamera: true,
+                      ),
+                    ],
                   ),
                 ),
                 Positioned(

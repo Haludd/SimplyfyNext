@@ -66,8 +66,6 @@ class ShellMenu extends StatelessWidget {
             cameraReady ? 'Turn camera off' : 'Turn camera on',
           ),
         if (cameraActions)
-          _item('camera-restart', Icons.refresh, 'Restart camera'),
-        if (cameraActions)
           _item('camera-flip', Icons.cameraswitch_outlined, 'Flip camera'),
         if (cameraActions)
           _item(
@@ -77,12 +75,6 @@ class ShellMenu extends StatelessWidget {
             checked: appController.viewMode == ViewMode.wireframe,
           ),
         if (cameraActions) const PopupMenuDivider(),
-        _item(
-          'audio',
-          Icons.volume_up_outlined,
-          'Speak messages aloud',
-          checked: appController.audioEnabled,
-        ),
         if (signActions)
           _item(
             'pause',
@@ -153,10 +145,6 @@ class ShellMenu extends StatelessWidget {
       await appController.toggleCamera();
       return;
     }
-    if (value == 'camera-restart') {
-      await appController.restartCamera();
-      return;
-    }
     if (value == 'camera-flip') {
       await appController.switchCamera();
       return;
@@ -167,10 +155,6 @@ class ShellMenu extends StatelessWidget {
             ? ViewMode.raw
             : ViewMode.wireframe,
       );
-      return;
-    }
-    if (value == 'audio') {
-      appController.toggleAudio();
       return;
     }
     if (value == 'pause') {

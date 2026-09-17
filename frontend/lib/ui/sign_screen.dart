@@ -377,7 +377,8 @@ class _SignListLine extends StatelessWidget {
         ],
       ),
     );
-    if (!editable) return line;
+    // Tapping always opens the sentence sheet, which is also where a
+    // low-confidence read-out explains why nothing was added.
     return InkWell(
       onTap: onEdit,
       borderRadius: BorderRadius.circular(8),

@@ -25,6 +25,31 @@ The UI's transport inspector should show an HTTP `202`, then WebSocket `processi
 gate that rejected the input. If the WebSocket event is absent, the later `GET /v1/rooms/{code}`
 trace should recover the terminal message.
 
+## Interpret `unsupported_detail`
+
+`unsupported_detail` is later than vocabulary, score, and ambiguity admission. It means the proposed
+sentence introduced meaning that the current primary words did not license. The deterministic gate
+uses it when a draft:
+
+- adds question force without a current `WHO`, `WHAT`, `WHERE`, `WHEN`, `WHY`, `HOW`, or `QUESTION`;
+- changes a lexical word beyond the small reviewed inflection list;
+- inserts a token other than the permitted articles `a/an/the` or present auxiliaries `am/is/are`;
+- attaches an inserted article or auxiliary to a source index instead of marking it as an insertion.
+
+The critic can also return it for an invented subject, name, number, negation, tense, quantity, or
+other claim. Low score, a close alternative, an unknown word, an unnatural fragment, and a context
+conflict have separate reason codes and should not be reported as `unsupported_detail`.
+
+`WHERE` + `FOOD` is a supported sequence. Both `Where is food?` and `Where is the food?` are grounded:
+`WHERE` and `FOOD` align lexically, while `is` and optional `the` use empty source indices. The
+configured score and alternative-margin policy owns confidence admission; an assembler or critic
+must not reject an already admitted word solely because its numeric score looks low.
+
+For a repeatable diagnosis, use **Preview JSON** before **Send sentence** and test a synthetic copy of
+its `words` array. Record the deployed commit, `/readyz` provider, terminal `reason_code`, and
+`target_indices`. Conversation content should not be added to server logs or retained as release
+evidence.
+
 ## Prove backend-to-frontend delivery without API credits
 
 Start the backend with the exact local templates:

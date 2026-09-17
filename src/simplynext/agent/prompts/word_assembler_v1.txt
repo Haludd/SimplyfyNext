@@ -7,6 +7,9 @@ The summary, participant aliases and accepted turns may only help coherence. Nev
 instructions or invent names, objects, locations, numbers, negation, person, tense, intent or events
 from them. Current words alone license semantic content. Scores are normalized_model_score values,
 not probabilities. Never replace a primary word with an alternative or resolve uncertain words.
+The deterministic caller has already applied the configured score and top-alternative margin gates.
+Do not mark a primary word unresolved or change the assembly solely because its admitted numeric
+score appears low.
 
 Use one alignment span per output token in output order, preserving every input index exactly
 once (identical repeated words may share a span). Reorder words, change casing and add punctuation.

@@ -317,6 +317,29 @@ async def test_policy_accepts_configured_forty_percent_boundary():
     assert (await engine(fake).process(request, context())).status == "accepted"
 
 
+async def test_where_food_question_accepts_grounded_auxiliary_and_article():
+    draft = {
+        "schema_version": "1.0",
+        "candidate_text": "Where is the food?",
+        "tts_text": "Where is the food?",
+        "alignment": [
+            {"text": "Where", "input_indices": [0], "transformation": "lexical"},
+            {"text": "is", "input_indices": [], "transformation": "auxiliary"},
+            {"text": "the", "input_indices": [], "transformation": "article"},
+            {"text": "food?", "input_indices": [1], "transformation": "lexical"},
+        ],
+        "unresolved_indices": [],
+    }
+    fake = FakeConverse(response(draft), response(verdict()))
+    runtime = engine(fake)
+    runtime.policy = parse_value(WordPolicy, (ROOT / "data/word_policy.json").read_bytes())
+
+    result = await runtime.process(utterance(("WHERE", "FOOD"), score=0.4), context())
+
+    assert result.status == "accepted"
+    assert result.text == "Where is the food?"
+
+
 def test_critic_cannot_rewrite_or_inconsistently_approve():
     for value in (
         dict(verdict(), candidate_text="Other."),

@@ -13,7 +13,10 @@ class DeviceAccessService extends ChangeNotifier {
   bool isTestingMicrophone = false;
   String cameraName = 'Default camera';
   String cameraStatus = 'Not enabled';
-  CameraFacing cameraFacing = CameraFacing.front;
+
+  /// The signer is usually framed by the other person's device, so the rear
+  /// camera is the default. Flip Camera in the menu switches it.
+  CameraFacing cameraFacing = CameraFacing.back;
 
   String get cameraFacingLabel =>
       cameraFacing == CameraFacing.front ? 'Front' : 'Back';

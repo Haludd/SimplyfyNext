@@ -646,14 +646,15 @@ class _CandidateChip extends StatelessWidget {
   final _Candidate candidate;
 
   /// The single most likely sign gets the main accent so it reads as the
-  /// default choice; the other candidates get the darker accent so they
-  /// still read as clickable without competing with it.
+  /// default choice; the other candidates get a light grey — a step up from
+  /// the white card behind them, but deliberately not accented, so they
+  /// stay clearly secondary to it.
   final bool isTopRank;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Material(
-    color: isTopRank ? Sb.primary : Sb.primaryStrong,
+    color: isTopRank ? Sb.primary : Sb.surfaceStrong,
     borderRadius: BorderRadius.circular(999),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
@@ -663,8 +664,8 @@ class _CandidateChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         child: Text(
           '${candidate.display} ${Sb.percent(candidate.confidence)}',
-          style: TextStyle(
-            color: isTopRank ? Sb.text : Colors.white,
+          style: const TextStyle(
+            color: Sb.text,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),

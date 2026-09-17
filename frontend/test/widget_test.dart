@@ -115,8 +115,8 @@ void main() {
     expect(find.text('HELLO 81%'), findsOneWidget);
     expect(find.text('PLEASE 12%'), findsOneWidget);
     expect(find.text('Confidence: 81%'), findsOneWidget);
-    // The highest-confidence candidate gets the main accent; the rest get
-    // the darker accent instead of fading toward the background.
+    // The highest-confidence candidate gets the main accent; the rest get a
+    // light grey — a step up from the white card, but not accented.
     expect(
       tester
           .widget<Material>(
@@ -145,7 +145,7 @@ void main() {
                 .first,
           )
           .color,
-      Sb.primaryStrong,
+      Sb.surfaceStrong,
     );
     // Without a room there is nowhere to send a sentence, and the screen says
     // exactly that instead of printing backend chatter.

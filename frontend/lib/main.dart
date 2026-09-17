@@ -785,27 +785,6 @@ class _LivePreviewOverlay extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               _StatusPill(label: status, color: cameraReady ? _mint : _yellow),
-              if (controller.isBackendConnected) ...<Widget>[
-                const SizedBox(width: 7),
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xB307111F),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: IconButton(
-                    onPressed: () => _showBackendPayload(context, controller),
-                    tooltip: 'Show last landmark batch',
-                    icon: const Icon(
-                      Icons.data_object,
-                      color: Colors.white,
-                      size: 17,
-                    ),
-                    padding: const EdgeInsets.all(7),
-                    constraints: const BoxConstraints(),
-                  ),
-                ),
-              ],
               if (cameraReady) ...<Widget>[
                 const SizedBox(width: 7),
                 Container(
@@ -1208,35 +1187,6 @@ String _recognitionAlternativesText(List<Map<String, dynamic>> hypotheses) =>
           return '$label$percent';
         })
         .join('  ·  ');
-
-Future<void> _showBackendPayload(
-  BuildContext context,
-  AppController controller,
-) async {
-  await showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(
-        'Last landmark batch · ${controller.backendFramesSent} frames sent',
-      ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 520),
-        child: SingleChildScrollView(
-          child: SelectableText(
-            controller.lastBackendBatchJson ?? 'No acknowledged landmark batch yet. Start the camera and backend stream first.',
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-          ),
-        ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
-    ),
-  );
-}
 
 class _ResultChip extends StatelessWidget {
   const _ResultChip({

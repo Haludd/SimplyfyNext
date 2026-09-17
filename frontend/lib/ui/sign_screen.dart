@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
@@ -133,98 +131,113 @@ class _TranslationPanel extends StatelessWidget {
     final canSend = controller.canCommitTranslatedUtterance && !sending;
     final canDeleteWord = words.isNotEmpty;
 
-    return FractionallySizedBox(
-      widthFactor: .9,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _GlassCaption(
-              key: const ValueKey<String>('translated-utterance-buffer'),
-              text: caption.text,
-              muted: caption.muted,
-              canDeleteWord: canDeleteWord,
-              onDeleteWord: () =>
-                  controller.removeTranslatedWordAt(words.length - 1),
-              onTap: () => _openWordEditor(context),
-            ),
-            const SizedBox(height: 9),
-            if (showAnalysisRow)
-              _AnalysisRow(
-                candidates: candidates,
-                confidence: confidence,
-                onPick: (candidate) => controller.addHypothesisWord(
-                  candidate.label,
-                  candidate.confidence,
-                ),
-              ),
-            if (note != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, top: 4),
-                child: Text(
-                  note,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Sb.warn,
-                    fontSize: 12,
-                    height: 1.35,
-                    shadows: <Shadow>[
-                      Shadow(color: Colors.black38, blurRadius: 6),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
-            Row(
+    // Proportional on a phone-sized window (unchanged from before), capped in
+    // absolute pixels so the panel does not stretch edge-to-edge and thin out
+    // on a full desktop window — that cap is what lets fixed, generous font
+    // sizes below stay legible at both sizes instead of needing to shrink to
+    // fit a much wider box.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: FractionallySizedBox(
+          widthFactor: .93,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                CameraIconButton(
-                  icon: Icons.volume_up_rounded,
-                  tooltip: 'Read the sentence aloud',
-                  onPressed: caption.muted
-                      ? null
-                      : () => controller.textToSpeech.speak(caption.text),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    key: const ValueKey<String>(
-                      'commit-translated-utterance',
-                    ),
-                    onPressed: canSend
-                        ? controller.commitTranslatedUtterance
-                        : null,
-                    icon: sending
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Sb.text,
-                            ),
-                          )
-                        : const Icon(Icons.arrow_upward_rounded, size: 20),
-                    label: Text(
-                      sending
-                          ? 'Sending…'
-                          : 'Send ${words.length} word${words.length == 1 ? '' : 's'}',
-                    ),
+                _CaptionCard(
+                  key: const ValueKey<String>('translated-utterance-buffer'),
+                  text: caption.text,
+                  muted: caption.muted,
+                  canDeleteWord: canDeleteWord,
+                  onDeleteWord: () =>
+                      controller.removeTranslatedWordAt(words.length - 1),
+                  onTap: () => _openWordEditor(context),
+                  showAnalysis: showAnalysisRow,
+                  candidates: candidates,
+                  confidence: confidence,
+                  onPick: (candidate) => controller.addHypothesisWord(
+                    candidate.label,
+                    candidate.confidence,
                   ),
                 ),
-                const SizedBox(width: 10),
-                CameraIconButton(
-                  key: const ValueKey<String>('reset-translated-utterance'),
-                  icon: Icons.delete_sweep_outlined,
-                  tooltip: 'Clear the entire sentence',
-                  onPressed: controller.canClearTranslatedUtterance
-                      ? controller.clearCaption
-                      : null,
+                if (note != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6, top: 6),
+                    child: Text(
+                      note,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Sb.warn,
+                        fontSize: 12,
+                        height: 1.35,
+                        shadows: <Shadow>[
+                          Shadow(color: Colors.black38, blurRadius: 6),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    CameraIconButton(
+                      icon: Icons.volume_up_rounded,
+                      tooltip: 'Read the sentence aloud',
+                      size: 50,
+                      onPressed: caption.muted
+                          ? null
+                          : () => controller.textToSpeech.speak(caption.text),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SizedBox(
+                        height: 56,
+                        child: FilledButton.icon(
+                          key: const ValueKey<String>(
+                            'commit-translated-utterance',
+                          ),
+                          onPressed: canSend
+                              ? controller.commitTranslatedUtterance
+                              : null,
+                          icon: sending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Sb.text,
+                                  ),
+                                )
+                              : const Icon(Icons.arrow_upward_rounded, size: 22),
+                          label: Text(
+                            sending
+                                ? 'Sending…'
+                                : 'Send ${words.length} word${words.length == 1 ? '' : 's'}',
+                            style: const TextStyle(fontSize: 17),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    CameraIconButton(
+                      key: const ValueKey<String>(
+                        'reset-translated-utterance',
+                      ),
+                      icon: Icons.delete_sweep_outlined,
+                      tooltip: 'Clear the entire sentence',
+                      size: 50,
+                      onPressed: controller.canClearTranslatedUtterance
+                          ? controller.clearCaption
+                          : null,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -304,24 +317,32 @@ class _Caption {
   final bool muted;
 }
 
-/// Small light-on-video text for the meta line under the caption.
+/// Muted label text for "Sign:" / "Confidence:" / the empty-candidates dash,
+/// now set on the card's own near-solid background rather than on raw video,
+/// so it no longer depends on a shadow to stay legible.
 const TextStyle _metaStyle = TextStyle(
-  color: Colors.white,
-  fontSize: 12,
-  fontWeight: FontWeight.w500,
-  shadows: <Shadow>[Shadow(color: Colors.black45, blurRadius: 6)],
+  color: Sb.textMuted,
+  fontSize: 14,
+  fontWeight: FontWeight.w600,
 );
 
-/// The main caption: an iOS-style frosted glass panel over the live video,
-/// with one icon that trims the sentence back a word at a time.
-class _GlassCaption extends StatelessWidget {
-  const _GlassCaption({
+/// The one caption card: the sentence on top, the sign candidates and
+/// confidence underneath, all on one solid, high-contrast surface instead of
+/// bare text over the live video. A card this deliberately opaque is no
+/// longer really "glass" — legibility against a busy video background won by
+/// design here over the earlier translucent look.
+class _CaptionCard extends StatelessWidget {
+  const _CaptionCard({
     super.key,
     required this.text,
     required this.muted,
     required this.canDeleteWord,
     required this.onDeleteWord,
     required this.onTap,
+    required this.showAnalysis,
+    required this.candidates,
+    required this.confidence,
+    required this.onPick,
   });
 
   final String text;
@@ -329,26 +350,36 @@ class _GlassCaption extends StatelessWidget {
   final bool canDeleteWord;
   final VoidCallback onDeleteWord;
   final VoidCallback onTap;
+  final bool showAnalysis;
+  final List<_Candidate> candidates;
+  final double confidence;
+  final ValueChanged<_Candidate> onPick;
 
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(Sb.radiusLarge),
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .30),
-          borderRadius: BorderRadius.circular(Sb.radiusLarge),
-          border: Border.all(color: Colors.white.withValues(alpha: .55)),
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .96),
+      borderRadius: BorderRadius.circular(Sb.radiusLarge),
+      border: Border.all(color: Sb.border),
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: Colors.black.withValues(alpha: .22),
+          blurRadius: 24,
+          offset: const Offset(0, 10),
         ),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(Sb.radiusLarge),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 13, 8, 13),
-              child: Row(
+      ],
+    ),
+    child: Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Sb.radiusLarge),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 10, showAnalysis ? 12 : 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
                   Expanded(
@@ -358,9 +389,9 @@ class _GlassCaption extends StatelessWidget {
                       maxLines: 4,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 16,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 21,
+                        height: 1.3,
+                        fontWeight: FontWeight.w700,
                         color: muted ? Sb.textMuted : Sb.text,
                       ),
                     ),
@@ -374,7 +405,7 @@ class _GlassCaption extends StatelessWidget {
                       onPressed: onDeleteWord,
                       icon: const Icon(
                         Icons.backspace_outlined,
-                        size: 19,
+                        size: 22,
                         color: Sb.textMuted,
                       ),
                     )
@@ -382,7 +413,18 @@ class _GlassCaption extends StatelessWidget {
                     const SizedBox(width: 8),
                 ],
               ),
-            ),
+              if (showAnalysis) ...<Widget>[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1, color: Sb.border),
+                ),
+                _AnalysisRow(
+                  candidates: candidates,
+                  confidence: confidence,
+                  onPick: onPick,
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -460,37 +502,34 @@ class _AnalysisRow extends StatelessWidget {
   final ValueChanged<_Candidate> onPick;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        const Text('Sign:', style: _metaStyle),
-        const SizedBox(width: 7),
-        Expanded(
-          child: candidates.isEmpty
-              ? const Text('—', style: _metaStyle)
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: <Widget>[
-                      for (var i = 0; i < candidates.length; i += 1) ...<Widget>[
-                        if (i > 0) const SizedBox(width: 6),
-                        _CandidateChip(
-                          candidate: candidates[i],
-                          onTap: () => onPick(candidates[i]),
-                        ),
-                      ],
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: <Widget>[
+      const Text('Sign:', style: _metaStyle),
+      const SizedBox(width: 8),
+      Expanded(
+        child: candidates.isEmpty
+            ? const Text('—', style: _metaStyle)
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: <Widget>[
+                    for (var i = 0; i < candidates.length; i += 1) ...<Widget>[
+                      if (i > 0) const SizedBox(width: 7),
+                      _CandidateChip(
+                        candidate: candidates[i],
+                        onTap: () => onPick(candidates[i]),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
-        ),
-        const SizedBox(width: 10),
-        ConfidenceDot(confidence: confidence),
-        const SizedBox(width: 6),
-        Text('Confidence: ${Sb.percent(confidence)}', style: _metaStyle),
-      ],
-    ),
+              ),
+      ),
+      const SizedBox(width: 10),
+      ConfidenceDot(confidence: confidence, size: 11),
+      const SizedBox(width: 6),
+      Text('Confidence: ${Sb.percent(confidence)}', style: _metaStyle),
+    ],
   );
 }
 
@@ -502,21 +541,20 @@ class _CandidateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white.withValues(alpha: .26),
+    color: Sb.primarySoft,
     borderRadius: BorderRadius.circular(999),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       key: ValueKey<String>('sign-candidate-${candidate.label}'),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         child: Text(
           '${candidate.display} ${Sb.percent(candidate.confidence)}',
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            shadows: <Shadow>[Shadow(color: Colors.black45, blurRadius: 5)],
+            color: Sb.text,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),

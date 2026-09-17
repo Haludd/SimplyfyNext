@@ -267,6 +267,6 @@
     "ZEBRA",
     "ZIPPER"
   ],
-  "min_score": 0.5,
-  "min_margin": 0.2
+  "min_score": 0.3,
+  "min_margin": 0.12
 }

@@ -1139,12 +1139,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   TranslatedSignUtterance _buildFinalUtterance(
     TranslatedSignUtteranceCompletionReason completionReason,
   ) {
-    final producer = _utteranceWords.first.producer;
-    if (_utteranceWords.any((word) => word.producer != producer)) {
-      throw StateError(
-        'One sentence cannot mix recognizer profiles. Send the current words before switching recognizers.',
-      );
-    }
+    final producers = _utteranceWords.map((word) => word.producer).toSet();
+    final producer = producers.length == 1
+        ? producers.single
+        : _combinedLocalProducer();
     return TranslatedSignUtterance(
       messageId: _draftMessageId ??= _messageIdGenerator(),
       clientSequence: _utteranceSubmission.nextClientSequence,
@@ -1199,6 +1197,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
     );
   }
+
+  /// The v1 wire envelope has one utterance-level producer. Use the explicit
+  /// combined profile when a sentence contains both model and personal words.
+  TranslatedSignUtteranceProducer _combinedLocalProducer() =>
+      TranslatedSignUtteranceProducer(
+        recognizerId: 'signbridge_local_recognizers',
+        recognizerVersion: 'signbridge_local_recognizers_v1',
+        translatorId: 'asl_label_to_english',
+        translatorVersion: '1.0.0',
+        vocabularyVersion: 'popsign_250_plus_personal_v1',
+        confidenceKind:
+            TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
+      );
 
   Future<void> completeCalibrationStep() async {
     if (calibrationStep < 3) {

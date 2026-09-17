@@ -6,6 +6,11 @@ credentials, and conversation history are excluded. The backend accepts the
 canonical JSON object below at the room sign endpoint. The following JSON
 Schema is normative for version 1.0.
 
+The producer object accepts three exact local profiles: the built-in PopSign
+model, personal landmark templates, and a combined profile for an utterance
+that contains words from both recognizers. Personal landmark templates stay
+on the device; only their validated English word and confidence are sent.
+
 ## Canonical message
 
 ```json
@@ -158,10 +163,18 @@ Schema is normative for version 1.0.
       ],
       "properties": {
         "recognizer_id": {
-          "const": "signchat_asl_signs_onnx"
+          "enum": [
+            "signchat_asl_signs_onnx",
+            "personal_landmark_templates",
+            "signbridge_local_recognizers"
+          ]
         },
         "recognizer_version": {
-          "const": "signchat_asl_signs_onnx"
+          "enum": [
+            "signchat_asl_signs_onnx",
+            "personal_landmark_templates_v1",
+            "signbridge_local_recognizers_v1"
+          ]
         },
         "translator_id": {
           "const": "asl_label_to_english"
@@ -170,12 +183,75 @@ Schema is normative for version 1.0.
           "const": "1.0.0"
         },
         "vocabulary_version": {
-          "const": "popsign_250_en_v1"
+          "enum": [
+            "popsign_250_en_v1",
+            "personal_signs_local_v1",
+            "popsign_250_plus_personal_v1"
+          ]
         },
         "confidence_kind": {
           "const": "normalized_model_score"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "recognizer_id": {
+                "const": "signchat_asl_signs_onnx"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "recognizer_version": {
+                "const": "signchat_asl_signs_onnx"
+              },
+              "vocabulary_version": {
+                "const": "popsign_250_en_v1"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recognizer_id": {
+                "const": "personal_landmark_templates"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "recognizer_version": {
+                "const": "personal_landmark_templates_v1"
+              },
+              "vocabulary_version": {
+                "const": "personal_signs_local_v1"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recognizer_id": {
+                "const": "signbridge_local_recognizers"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "recognizer_version": {
+                "const": "signbridge_local_recognizers_v1"
+              },
+              "vocabulary_version": {
+                "const": "popsign_250_plus_personal_v1"
+              }
+            }
+          }
+        }
+      ]
     },
     "alternative": {
       "type": "object",

@@ -52,18 +52,28 @@ class WordPolicy(StrictValue):
         enforce_vocabulary: bool = True,
         enforce_scores: bool = True,
     ) -> RepairOutcome | None:
-        if utterance.producer != self.producer:
+        personal_vocabulary = utterance.producer.includes_personal_vocabulary
+        if utterance.producer != self.producer and not personal_vocabulary:
             return repair("policy_unconfigured")
         for word in utterance.words:
-            if enforce_vocabulary and any(
-                w not in self.vocabulary for w in (word.word, *(a.word for a in word.alternatives))
+            if (
+                enforce_vocabulary
+                and not personal_vocabulary
+                and any(
+                    w not in self.vocabulary
+                    for w in (word.word, *(a.word for a in word.alternatives))
+                )
             ):
                 return repair("unsupported_vocabulary", (word.index,))
             if enforce_scores and (word.confidence <= 0 or word.confidence < self.min_score):
                 return repair("low_score", (word.index,))
-            if enforce_scores and word.alternatives and (
-                word.confidence <= word.alternatives[0].confidence
-                or word.confidence - word.alternatives[0].confidence < self.min_margin
+            if (
+                enforce_scores
+                and word.alternatives
+                and (
+                    word.confidence <= word.alternatives[0].confidence
+                    or word.confidence - word.alternatives[0].confidence < self.min_margin
+                )
             ):
                 return repair("ambiguous_words", (word.index,))
         return None

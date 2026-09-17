@@ -20,6 +20,49 @@ void main() {
     confidenceKind: TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
   );
 
+  test('accepts personal and combined local recognition profiles', () {
+    for (final values in <(String, String, String)>[
+      (
+        'personal_landmark_templates',
+        'personal_landmark_templates_v1',
+        'personal_signs_local_v1',
+      ),
+      (
+        'signbridge_local_recognizers',
+        'signbridge_local_recognizers_v1',
+        'popsign_250_plus_personal_v1',
+      ),
+    ]) {
+      expect(
+        () => TranslatedSignUtteranceProducer(
+          recognizerId: values.$1,
+          recognizerVersion: values.$2,
+          translatorId: 'asl_label_to_english',
+          translatorVersion: '1.0.0',
+          vocabularyVersion: values.$3,
+          confidenceKind:
+              TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
+        ),
+        returnsNormally,
+      );
+    }
+  });
+
+  test('rejects mismatched local recognition profile fields', () {
+    expect(
+      () => TranslatedSignUtteranceProducer(
+        recognizerId: 'personal_landmark_templates',
+        recognizerVersion: 'signchat_asl_signs_onnx',
+        translatorId: 'asl_label_to_english',
+        translatorVersion: '1.0.0',
+        vocabularyVersion: 'personal_signs_local_v1',
+        confidenceKind:
+            TranslatedSignUtteranceConfidenceKind.normalizedModelScore,
+      ),
+      throwsA(isA<TranslatedSignUtteranceValidationException>()),
+    );
+  });
+
   test('serializes the exact final utterance shape without capture data', () {
     final utterance = TranslatedSignUtterance(
       messageId: _messageId,

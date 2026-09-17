@@ -8,11 +8,11 @@ export type englishWord = string;
 export type score = number;
 
 export type producer = {
-  readonly "recognizer_id": "signchat_asl_signs_onnx";
-  readonly "recognizer_version": "signchat_asl_signs_onnx";
+  readonly "recognizer_id": "signchat_asl_signs_onnx" | "personal_landmark_templates" | "signbridge_local_recognizers";
+  readonly "recognizer_version": "signchat_asl_signs_onnx" | "personal_landmark_templates_v1" | "signbridge_local_recognizers_v1";
   readonly "translator_id": "asl_label_to_english";
   readonly "translator_version": "1.0.0";
-  readonly "vocabulary_version": "popsign_250_en_v1";
+  readonly "vocabulary_version": "popsign_250_en_v1" | "personal_signs_local_v1" | "popsign_250_plus_personal_v1";
   readonly "confidence_kind": "normalized_model_score";
 };
 

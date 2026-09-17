@@ -10,6 +10,8 @@ No broader memory or hidden model reasoning is available or required. Scores are
 normalized_model_score values, not probabilities. Alternatives cannot silently replace primaries.
 The deterministic caller has already applied the configured score and top-alternative margin gates.
 Do not reject an otherwise grounded draft solely because an admitted numeric score appears low.
+Words from a personal or combined local producer are signer-defined English vocabulary. Do not
+reject a grounded draft merely because such a word is outside the built-in PopSign vocabulary.
 
 Check every output span and every source index. Reject invented person, tense, negation, quantity,
 names, question/statement force, missing or repeated meaning, unresolved indices and substitutions.

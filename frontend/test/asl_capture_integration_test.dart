@@ -6,6 +6,7 @@ import 'package:apptesting/contracts/landmark_stream.dart';
 import 'package:apptesting/models/asl_recognition_models.dart';
 import 'package:apptesting/models/face_tracking_models.dart';
 import 'package:apptesting/models/hand_tracking_models.dart';
+import 'package:apptesting/models/tracking_models.dart';
 import 'package:apptesting/services/asl_recognizer_bridge.dart';
 import 'package:apptesting/services/device_access_service.dart';
 import 'package:apptesting/services/hand_pose_normalizer.dart';
@@ -298,6 +299,99 @@ void main() {
       expect(controller.backendStatus, contains('Utterance accepted'));
     },
   );
+
+  test('a personal I sign enters the tray and is delivered with a following model word', () async {
+    Map<String, dynamic>? sent;
+    final submission = TranslatedSignUtteranceSubmissionService(
+      endpoint: Uri.parse('http://localhost/v1/rooms/ROOM/sign-utterances'),
+      participantCapability: 'test-capability',
+      client: MockClient((request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'event_schema_version': '1.0',
+            'type': 'utterance_ack',
+            'message_id': '123e4567-e89b-42d3-a456-426614174000',
+            'client_sequence': 0,
+            'server_sequence': 1,
+            'disposition': 'accepted',
+          }),
+          202,
+        );
+      }),
+    );
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final preferences = await SharedPreferences.getInstance();
+    final tracking = DemoTrackingService();
+    final controller = AppController(
+      LocalStateService(preferences),
+      tracking,
+      DeviceAccessService(),
+      aslRecognizer: _Recognizer(),
+      utteranceSubmission: submission,
+      messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
+    )..audioEnabled = false;
+    addTearDown(controller.dispose);
+    await Future<void>.delayed(Duration.zero);
+
+    final frame = LandmarkFrameFixtures.fullyTrackedFrame();
+    final sample = List<double>.unmodifiable(frame.featureVector);
+    controller.customSigns = <CustomSign>[
+      CustomSign(
+        label: 'I',
+        samples: List<List<double>>.generate(5, (_) => sample),
+        createdAt: DateTime.utc(2026),
+        language: 'ASL',
+        vectorSize: sample.length,
+      ),
+    ];
+
+    tracking.beginUtterance();
+    tracking.ingest(frame);
+    await controller.analyzeSign();
+
+      expect(controller.translatedWords, <String>['I']);
+      expect(
+        controller.visibleAnalysis?.modelVersion,
+        'personal_landmark_templates_v1',
+      );
+      final personalPreview = jsonDecode(
+        controller.translatedUtterancePreviewJson!,
+      ) as Map<String, dynamic>;
+      expect(
+        (personalPreview['producer'] as Map<String, dynamic>)['recognizer_id'],
+        'personal_landmark_templates',
+      );
+      expect(sent, isNull);
+
+    // A sentence can continue with the shipped model after a personal word.
+    controller.customSigns = <CustomSign>[];
+    tracking.beginUtterance();
+    tracking.ingest(frame);
+    await controller.analyzeSign();
+    expect(controller.translatedWords, <String>['I', 'HELLO']);
+
+    final preview = jsonDecode(
+      controller.translatedUtterancePreviewJson!,
+    ) as Map<String, dynamic>;
+    expect(
+      (preview['producer'] as Map<String, dynamic>)['recognizer_id'],
+      'signbridge_local_recognizers',
+    );
+
+    await controller.commitTranslatedUtterance();
+
+    expect(
+      (sent?['words'] as List<dynamic>).map(
+        (word) => (word as Map<String, dynamic>)['word'],
+      ),
+      <String>['I', 'HELLO'],
+    );
+    expect(
+      (sent?['producer'] as Map<String, dynamic>)['vocabulary_version'],
+      'popsign_250_plus_personal_v1',
+    );
+  });
 
   test(
     'never auto-sends completed words; the signer explicitly sends them',

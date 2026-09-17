@@ -21,7 +21,11 @@ from simplynext.agent.words.critic import ProviderWordCritic
 from simplynext.agent.words.graph import WordGraph
 from simplynext.agent.words.state import WordDraft, WordVerdict
 from simplynext.config import Settings
-from simplynext.contracts.translated_sign_utterance import TranslatedSignUtteranceV1, parse_value
+from simplynext.contracts.translated_sign_utterance import (
+    TranslatedSignUtteranceV1,
+    WordProducer,
+    parse_value,
+)
 from simplynext.rooms.context import ConversationContext, ConversationTurn
 from simplynext.translation_runtime import (
     WordPolicy,
@@ -315,6 +319,38 @@ async def test_policy_accepts_configured_forty_percent_boundary():
     request = utterance(score=0.4)
     fake = FakeConverse(response(ENTRIES[0]["draft"]), response(verdict()))
     assert (await engine(fake).process(request, context())).status == "accepted"
+
+
+async def test_personal_i_bypasses_fixed_vocabulary_but_keeps_score_gate():
+    personal = WordProducer(
+        recognizer_id="personal_landmark_templates",
+        recognizer_version="personal_landmark_templates_v1",
+        translator_id="asl_label_to_english",
+        translator_version="1.0.0",
+        vocabulary_version="personal_signs_local_v1",
+        confidence_kind="normalized_model_score",
+    )
+    draft = {
+        "schema_version": "1.0",
+        "candidate_text": "I.",
+        "tts_text": "I.",
+        "alignment": [
+            {"text": "I.", "input_indices": [0], "transformation": "lexical"},
+        ],
+        "unresolved_indices": [],
+    }
+    fake = FakeConverse(response(draft), response(verdict()))
+    runtime = engine(fake)
+    runtime.policy = parse_value(WordPolicy, (ROOT / "data/word_policy.json").read_bytes())
+
+    accepted = utterance(("I",), score=0.56).model_copy(update={"producer": personal})
+    result = await runtime.process(accepted, context())
+
+    assert result.status == "accepted"
+    assert result.text == "I."
+
+    rejected = utterance(("I",), score=0.399).model_copy(update={"producer": personal})
+    assert (await runtime.process(rejected, context())).reason_code == "low_score"
 
 
 async def test_where_food_question_accepts_grounded_auxiliary_and_article():

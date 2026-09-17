@@ -40,6 +40,52 @@ def test_canonical_fixture_and_schema_match_frozen_document() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "producer",
+    [
+        {
+            "recognizer_id": "personal_landmark_templates",
+            "recognizer_version": "personal_landmark_templates_v1",
+            "translator_id": "asl_label_to_english",
+            "translator_version": "1.0.0",
+            "vocabulary_version": "personal_signs_local_v1",
+            "confidence_kind": "normalized_model_score",
+        },
+        {
+            "recognizer_id": "signbridge_local_recognizers",
+            "recognizer_version": "signbridge_local_recognizers_v1",
+            "translator_id": "asl_label_to_english",
+            "translator_version": "1.0.0",
+            "vocabulary_version": "popsign_250_plus_personal_v1",
+            "confidence_kind": "normalized_model_score",
+        },
+    ],
+)
+def test_personal_vocabulary_producer_profiles_are_wire_valid(producer: dict) -> None:
+    payload = json.loads(FIXTURE.read_text())
+    payload["producer"] = producer
+    payload["words"] = [
+        dict(index=0, token_id="word-0", word="I", confidence=0.56, alternatives=[])
+    ]
+    schema = json.loads(SCHEMA.read_text())
+
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(payload)
+    assert (
+        parse_value(TranslatedSignUtteranceV1, json.dumps(payload)).producer.model_dump()
+        == producer
+    )
+
+
+def test_personal_producer_fields_cannot_be_mixed_with_popsign_profile() -> None:
+    payload = json.loads(FIXTURE.read_text())
+    payload["producer"]["recognizer_id"] = "personal_landmark_templates"
+    schema = json.loads(SCHEMA.read_text())
+
+    assert not Draft202012Validator(schema).is_valid(payload)
+    with pytest.raises(ValidationError):
+        parse_value(TranslatedSignUtteranceV1, json.dumps(payload))
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
 def test_shared_invalid_fixture_table(case: dict) -> None:
     raw = case.get("raw_json", json.dumps(case.get("payload")))

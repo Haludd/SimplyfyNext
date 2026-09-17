@@ -66,12 +66,50 @@ WordIndex = Annotated[int, Field(ge=0, le=63), BeforeValidator(json_integer)]
 
 
 class WordProducer(StrictValue):
-    recognizer_id: Literal["signchat_asl_signs_onnx"]
-    recognizer_version: Literal["signchat_asl_signs_onnx"]
+    recognizer_id: Literal[
+        "signchat_asl_signs_onnx",
+        "personal_landmark_templates",
+        "signbridge_local_recognizers",
+    ]
+    recognizer_version: Literal[
+        "signchat_asl_signs_onnx",
+        "personal_landmark_templates_v1",
+        "signbridge_local_recognizers_v1",
+    ]
     translator_id: Literal["asl_label_to_english"]
     translator_version: Literal["1.0.0"]
-    vocabulary_version: Literal["popsign_250_en_v1"]
+    vocabulary_version: Literal[
+        "popsign_250_en_v1",
+        "personal_signs_local_v1",
+        "popsign_250_plus_personal_v1",
+    ]
     confidence_kind: Literal["normalized_model_score"]
+
+    @model_validator(mode="after")
+    def supported_profile(self) -> Self:
+        profile = (self.recognizer_id, self.recognizer_version, self.vocabulary_version)
+        if profile not in {
+            ("signchat_asl_signs_onnx", "signchat_asl_signs_onnx", "popsign_250_en_v1"),
+            (
+                "personal_landmark_templates",
+                "personal_landmark_templates_v1",
+                "personal_signs_local_v1",
+            ),
+            (
+                "signbridge_local_recognizers",
+                "signbridge_local_recognizers_v1",
+                "popsign_250_plus_personal_v1",
+            ),
+        }:
+            raise ValueError("unsupported producer profile")
+        return self
+
+    @property
+    def includes_personal_vocabulary(self) -> bool:
+        return self.recognizer_id in {
+            "personal_landmark_templates",
+            "signbridge_local_recognizers",
+        }
 
 
 class WordAlternative(StrictValue):

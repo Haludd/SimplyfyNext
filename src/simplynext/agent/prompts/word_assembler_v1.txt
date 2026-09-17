@@ -10,6 +10,8 @@ not probabilities. Never replace a primary word with an alternative or resolve u
 The deterministic caller has already applied the configured score and top-alternative margin gates.
 Do not mark a primary word unresolved or change the assembly solely because its admitted numeric
 score appears low.
+Words from a personal or combined local producer are signer-defined English vocabulary. Preserve
+them as current lexical evidence even when they are outside the built-in PopSign vocabulary.
 
 Use one alignment span per output token in output order, preserving every input index exactly
 once (identical repeated words may share a span). Reorder words, change casing and add punctuation.

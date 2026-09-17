@@ -75,14 +75,24 @@ final class TranslatedSignUtteranceProducer {
     _validateIdentifier(translatorId, 'producer.translator_id');
     _validateIdentifier(translatorVersion, 'producer.translator_version');
     _validateIdentifier(vocabularyVersion, 'producer.vocabulary_version');
-    if (recognizerId != 'signchat_asl_signs_onnx' ||
-        recognizerVersion != 'signchat_asl_signs_onnx' ||
-        translatorId != 'asl_label_to_english' ||
+    final isPopSign =
+        recognizerId == 'signchat_asl_signs_onnx' &&
+        recognizerVersion == 'signchat_asl_signs_onnx' &&
+        vocabularyVersion == 'popsign_250_en_v1';
+    final isPersonal =
+        recognizerId == 'personal_landmark_templates' &&
+        recognizerVersion == 'personal_landmark_templates_v1' &&
+        vocabularyVersion == 'personal_signs_local_v1';
+    final isCombined =
+        recognizerId == 'signbridge_local_recognizers' &&
+        recognizerVersion == 'signbridge_local_recognizers_v1' &&
+        vocabularyVersion == 'popsign_250_plus_personal_v1';
+    if (translatorId != 'asl_label_to_english' ||
         translatorVersion != '1.0.0' ||
-        vocabularyVersion != 'popsign_250_en_v1' ||
         confidenceKind !=
-            TranslatedSignUtteranceConfidenceKind.normalizedModelScore) {
-      _invalid('producer must match the frozen PopSign 250 profile');
+            TranslatedSignUtteranceConfidenceKind.normalizedModelScore ||
+        (!isPopSign && !isPersonal && !isCombined)) {
+      _invalid('producer must match a supported local recognition profile');
     }
   }
 

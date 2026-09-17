@@ -31,5 +31,15 @@ flutter run -d chrome --web-port 8081 \
 Use HTTPS for camera and microphone access outside localhost. The backend must
 allow this frontend's exact origin.
 
+If you serve `build/web` with a static server instead of `flutter run`, rebuild
+after every pull. `build/web` is intentionally ignored by Git and can otherwise
+contain an older compiled confidence gate:
+
+```bash
+flutter build web --release \
+  --dart-define=SIGNBRIDGE_API_BASE_URL=http://127.0.0.1:8000
+python3 -m http.server 8081 --directory build/web
+```
+
 See [`docs/INTEGRATION_DEPLOY1.md`](../docs/INTEGRATION_DEPLOY1.md) for backend,
 Railway, Cloudflare tunnel and two-device test instructions.

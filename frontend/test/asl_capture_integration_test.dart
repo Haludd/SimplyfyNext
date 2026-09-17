@@ -37,6 +37,14 @@ const _thresholdHello = AslRecognitionResult(
   frameCount: 25,
 );
 
+const _jacketAtFiftyThreePercent = AslRecognitionResult(
+  status: 'recognized',
+  word: 'jacket',
+  confidence: .53,
+  modelVersion: 'signchat_asl_signs_onnx',
+  frameCount: 46,
+);
+
 const _belowThresholdHello = AslRecognitionResult(
   status: 'unknown',
   confidence: .399,
@@ -401,24 +409,27 @@ void main() {
     expect(controller.pendingTranslatedWordConfidence, .01);
   });
 
-  test('a following sign dismisses an unconfirmed possible word', () async {
-    final (controller, tracking, bridge) = await _controller();
-    addTearDown(controller.dispose);
-    bridge.result = _veryUncertainHello;
+  test(
+    'a 53-percent sign replaces a stale suggestion and enters the utterance',
+    () async {
+      final (controller, tracking, bridge) = await _controller();
+      addTearDown(controller.dispose);
+      bridge.result = _veryUncertainHello;
 
-    tracking.beginUtterance();
-    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
-    await controller.analyzeSign();
-    expect(controller.pendingTranslatedWords, <String>['HELLO']);
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await controller.analyzeSign();
+      expect(controller.pendingTranslatedWords, <String>['HELLO']);
 
-    bridge.result = _hello;
-    tracking.beginUtterance();
-    tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
-    await controller.analyzeSign();
+      bridge.result = _jacketAtFiftyThreePercent;
+      tracking.beginUtterance();
+      tracking.ingest(LandmarkFrameFixtures.fullyTrackedFrame());
+      await controller.analyzeSign();
 
-    expect(controller.pendingTranslatedWords, isEmpty);
-    expect(controller.translatedWords, <String>['HELLO']);
-  });
+      expect(controller.pendingTranslatedWords, isEmpty);
+      expect(controller.translatedWords, <String>['JACKET']);
+    },
+  );
 }
 
 Future<(AppController, DemoTrackingService, _Recognizer)> _controller() async {

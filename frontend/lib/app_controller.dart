@@ -201,7 +201,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   String backendStatus = 'Offline simulation · no backend configured';
   String selectedLanguage = 'ASL';
   String? backendActivityState;
-  String? _lastSpokenAnalysisKey;
   ServerLandmarkStreamIntegration? _serverLandmarkStream;
   bool _serverOwnsUtteranceLifecycle = false;
   bool _backendConnecting = false;
@@ -466,16 +465,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         ? 'Repair required · ${result.repairAction ?? 'ask_repeat'}'
         : 'Backend result ready';
     notifyListeners();
-
-    // A terminal confident result is spoken once per lattice. Repairs never
-    // trigger speech because they contain no caption or tts_text.
-    if (isResult && audioEnabled) {
-      final key = '${result.utteranceId}:${event['lattice_seq'] ?? ''}';
-      if (key != _lastSpokenAnalysisKey) {
-        _lastSpokenAnalysisKey = key;
-        unawaited(readCaptionAloud());
-      }
-    }
   }
 
   /// Starts one sign capture. Normal UI capture starts automatically when a
@@ -809,14 +798,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'This sentence already has ${TranslatedSignUtteranceContract.maxWords} words · send it or remove a word before adding more';
       return;
     }
-    if (audioEnabled) {
-      final key =
-          'local-asl:${frames.first.timestamp.microsecondsSinceEpoch}:${word.toLowerCase()}';
-      if (key != _lastSpokenAnalysisKey) {
-        _lastSpokenAnalysisKey = key;
-        unawaited(readCaptionAloud());
-      }
-    }
+    // Each accepted word used to be spoken aloud immediately; that read a
+    // single short word out of context and it was reported as a jarring
+    // "thud" more often than as useful feedback. The caption card's own
+    // brief green pulse (sign_screen.dart) now carries that "got it"
+    // signal instead. Reading the finished sentence aloud is still
+    // available on demand via the caption card's audio button.
   }
 
   void addPendingTranslatedWords() {

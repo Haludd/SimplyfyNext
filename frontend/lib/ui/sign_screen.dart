@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
@@ -109,17 +111,91 @@ class _CameraOffPrompt extends StatelessWidget {
   );
 }
 
-class _TranslationPanel extends StatelessWidget {
+class _TranslationPanel extends StatefulWidget {
   const _TranslationPanel({required this.controller, required this.room});
 
   final AppController controller;
   final RoomSessionController? room;
 
   @override
+  State<_TranslationPanel> createState() => _TranslationPanelState();
+}
+
+class _TranslationPanelState extends State<_TranslationPanel> {
+  /// How long an accepted sentence stays on screen before it is cleared to
+  /// make room for the next one, same as a Reset press would do sooner.
+  static const _sentenceDisplayDuration = Duration(seconds: 10);
+
+  /// How long the caption card's accept pulse stays visible.
+  static const _acceptGlowDuration = Duration(milliseconds: 650);
+
+  Timer? _dismissTimer;
+  String? _shownSentenceId;
+  bool _sentenceDismissed = false;
+
+  int _lastWordCount = 0;
+  Timer? _glowTimer;
+  bool _justAccepted = false;
+
+  AppController get controller => widget.controller;
+  RoomSessionController? get room => widget.room;
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    _glowTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Starts a fresh 10-second auto-dismiss window whenever a genuinely new
+  /// accepted sentence appears; leaves one already dismissed alone so it
+  /// does not reappear on an unrelated rebuild.
+  void _trackSentence(RoomMessage? sentence) {
+    final isAccepted =
+        sentence != null &&
+        sentence.status == 'accepted' &&
+        (sentence.text?.isNotEmpty ?? false);
+    final id = isAccepted ? sentence.messageId : null;
+    if (id == _shownSentenceId) return;
+    _dismissTimer?.cancel();
+    _shownSentenceId = id;
+    _sentenceDismissed = false;
+    if (id == null) return;
+    _dismissTimer = Timer(_sentenceDisplayDuration, () {
+      if (!mounted) return;
+      setState(() => _sentenceDismissed = true);
+      controller.clearCaption();
+    });
+  }
+
+  /// A brief green pulse whenever the sentence buffer grows, however the new
+  /// word was accepted — this is the only feedback now; it replaced a sound
+  /// played on every accepted sign.
+  void _trackWordCount(int count) {
+    if (count > _lastWordCount) {
+      _glowTimer?.cancel();
+      _justAccepted = true;
+      _glowTimer = Timer(_acceptGlowDuration, () {
+        if (!mounted) return;
+        setState(() => _justAccepted = false);
+      });
+    }
+    _lastWordCount = count;
+  }
+
+  void _dismissSentenceNow() {
+    _dismissTimer?.cancel();
+    _sentenceDismissed = true;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final words = controller.translatedWords;
+    _trackWordCount(words.length);
     final sending = controller.isUtteranceSubmissionInFlight;
-    final sentence = _latestOwnSentence(room);
+    final rawSentence = _latestOwnSentence(room);
+    _trackSentence(rawSentence);
+    final sentence = _sentenceDismissed ? null : rawSentence;
     final caption = _caption(words, sentence, sending);
     final analysis = controller.visibleAnalysis;
     final candidates = _topCandidates(analysis);
@@ -130,6 +206,15 @@ class _TranslationPanel extends StatelessWidget {
     final note = _actionableStatus(controller);
     final canSend = controller.canCommitTranslatedUtterance && !sending;
     final canDeleteWord = words.isNotEmpty;
+    // Enabled whenever the card is showing anything at all to clear —
+    // words in progress, a candidate read-out, or a sentence waiting out
+    // its 10-second display window — not just an in-progress word buffer.
+    final canReset =
+        !controller.hasPendingUtteranceSubmission &&
+        (words.isNotEmpty ||
+            controller.hasPendingTranslatedWords ||
+            analysis != null ||
+            sentence != null);
 
     // Proportional on a phone-sized window (unchanged from before), capped in
     // absolute pixels so the panel does not stretch edge-to-edge and thin out
@@ -162,6 +247,7 @@ class _TranslationPanel extends StatelessWidget {
                     candidate.label,
                     candidate.confidence,
                   ),
+                  justAccepted: _justAccepted,
                 ),
                 if (note != null)
                   Padding(
@@ -229,8 +315,11 @@ class _TranslationPanel extends StatelessWidget {
                       icon: Icons.delete_sweep_outlined,
                       tooltip: 'Clear the entire sentence',
                       size: 50,
-                      onPressed: controller.canClearTranslatedUtterance
-                          ? controller.clearCaption
+                      onPressed: canReset
+                          ? () {
+                              controller.clearCaption();
+                              _dismissSentenceNow();
+                            }
                           : null,
                     ),
                   ],
@@ -343,6 +432,7 @@ class _CaptionCard extends StatelessWidget {
     required this.candidates,
     required this.confidence,
     required this.onPick,
+    required this.justAccepted,
   });
 
   final String text;
@@ -355,12 +445,22 @@ class _CaptionCard extends StatelessWidget {
   final double confidence;
   final ValueChanged<_Candidate> onPick;
 
+  /// True for a brief moment right after a word is accepted into the
+  /// sentence — the card pulses pastel green instead of playing a sound.
+  final bool justAccepted;
+
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => AnimatedContainer(
+    duration: const Duration(milliseconds: 220),
+    curve: Curves.easeOut,
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .96),
+      color: justAccepted
+          ? Color.lerp(Colors.white, Sb.good, .24)
+          : Colors.white.withValues(alpha: .96),
       borderRadius: BorderRadius.circular(Sb.radiusLarge),
-      border: Border.all(color: Sb.border),
+      border: Border.all(
+        color: justAccepted ? Sb.good.withValues(alpha: .6) : Sb.border,
+      ),
       boxShadow: <BoxShadow>[
         BoxShadow(
           color: Colors.black.withValues(alpha: .22),
@@ -518,6 +618,9 @@ class _AnalysisRow extends StatelessWidget {
                       if (i > 0) const SizedBox(width: 7),
                       _CandidateChip(
                         candidate: candidates[i],
+                        // Candidates are already sorted by confidence, so
+                        // rank 0 is always the most likely sign.
+                        isTopRank: i == 0,
                         onTap: () => onPick(candidates[i]),
                       ),
                     ],
@@ -534,14 +637,23 @@ class _AnalysisRow extends StatelessWidget {
 }
 
 class _CandidateChip extends StatelessWidget {
-  const _CandidateChip({required this.candidate, required this.onTap});
+  const _CandidateChip({
+    required this.candidate,
+    required this.isTopRank,
+    required this.onTap,
+  });
 
   final _Candidate candidate;
+
+  /// The single most likely sign gets the main accent so it reads as the
+  /// default choice; the other candidates get the darker accent so they
+  /// still read as clickable without competing with it.
+  final bool isTopRank;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Sb.primarySoft,
+    color: isTopRank ? Sb.primary : Sb.primaryStrong,
     borderRadius: BorderRadius.circular(999),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
@@ -551,8 +663,8 @@ class _CandidateChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         child: Text(
           '${candidate.display} ${Sb.percent(candidate.confidence)}',
-          style: const TextStyle(
-            color: Sb.text,
+          style: TextStyle(
+            color: isTopRank ? Sb.text : Colors.white,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),

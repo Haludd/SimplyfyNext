@@ -115,6 +115,38 @@ void main() {
     expect(find.text('HELLO 81%'), findsOneWidget);
     expect(find.text('PLEASE 12%'), findsOneWidget);
     expect(find.text('Confidence: 81%'), findsOneWidget);
+    // The highest-confidence candidate gets the main accent; the rest get
+    // the darker accent instead of fading toward the background.
+    expect(
+      tester
+          .widget<Material>(
+            find
+                .ancestor(
+                  of: find.byKey(
+                    const ValueKey<String>('sign-candidate-hello'),
+                  ),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .color,
+      Sb.primary,
+    );
+    expect(
+      tester
+          .widget<Material>(
+            find
+                .ancestor(
+                  of: find.byKey(
+                    const ValueKey<String>('sign-candidate-please'),
+                  ),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .color,
+      Sb.primaryStrong,
+    );
     // Without a room there is nowhere to send a sentence, and the screen says
     // exactly that instead of printing backend chatter.
     expect(find.text('Start a room before sending a sentence.'), findsOneWidget);
@@ -154,6 +186,95 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('accepting a word pulses the caption card green, then fades back', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final controller = await _controller();
+    controller.latestAnalysis = const SignAnalysisResult(
+      status: 'candidate',
+      gestureLabel: 'please',
+      caption: 'Possible sign: please (55%)',
+      confidence: .55,
+      glossTrace: <String>[],
+      hypotheses: <Map<String, dynamic>>[
+        <String, dynamic>{'word': 'please', 'confidence': .55},
+      ],
+      modelVersion: 'signchat_asl_signs_onnx',
+    );
+    await tester.pumpWidget(_host(SignScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    Color? cardColor() => (tester
+                .widget<AnimatedContainer>(
+                  find.descendant(
+                    of: find.byKey(
+                      const ValueKey<String>('translated-utterance-buffer'),
+                    ),
+                    matching: find.byType(AnimatedContainer),
+                  ),
+                )
+                .decoration
+            as BoxDecoration?)
+        ?.color;
+
+    final before = cardColor();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sign-candidate-please')),
+    );
+    await tester.pump();
+    // No sound plays; the card itself briefly pulses instead.
+    expect(cardColor(), isNot(equals(before)));
+
+    // Past the pulse window, the card is back to its normal colour — no
+    // lingering tint.
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(cardColor(), equals(before));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets(
+    'resetting clears both the sentence buffer and its candidate read-out',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final controller = await _controller();
+      controller.latestAnalysis = const SignAnalysisResult(
+        status: 'confident',
+        gestureLabel: 'hello',
+        caption: 'hello',
+        confidence: .81,
+        glossTrace: <String>['hello'],
+        hypotheses: <Map<String, dynamic>>[
+          <String, dynamic>{'word': 'hello', 'confidence': .81},
+        ],
+        modelVersion: 'signchat_asl_signs_onnx',
+      );
+      await tester.pumpWidget(_host(SignScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sign-candidate-hello')),
+      );
+      await tester.pumpAndSettle();
+      expect(controller.translatedWords, <String>['HELLO']);
+      expect(find.text('HELLO 81%'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('reset-translated-utterance')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.translatedWords, isEmpty);
+      expect(find.text('Sign a word to begin'), findsOneWidget);
+      expect(find.text('HELLO 81%'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+    },
+  );
 
   testWidgets('recognition details keep the model read-out', (tester) async {
     const analysis = SignAnalysisResult(

@@ -487,6 +487,38 @@ void main() {
     },
   );
 
+  test(
+    'a definitive submission rejection unlocks the tray for a corrected send',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final submission = _RejectingSubmission();
+      final controller = AppController(
+        LocalStateService(preferences),
+        DemoTrackingService(),
+        DeviceAccessService(),
+        aslRecognizer: _Recognizer(),
+        utteranceSubmission: submission,
+        messageIdGenerator: () => '123e4567-e89b-42d3-a456-426614174000',
+      )..audioEnabled = false;
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(Duration.zero);
+
+      controller.addHypothesisWord('hello', .9);
+      await controller.commitTranslatedUtterance();
+
+      expect(controller.translatedWords, <String>['HELLO']);
+      expect(controller.hasPendingUtteranceSubmission, isFalse);
+      expect(controller.backendStatus, contains('tray is unlocked'));
+
+      await controller.commitTranslatedUtterance();
+
+      expect(submission.submitCalls, 2);
+      expect(controller.translatedWords, isEmpty);
+      expect(controller.backendStatus, contains('Utterance accepted'));
+    },
+  );
+
   test('automatically buffers a word at the forty-percent boundary', () async {
     final (controller, tracking, bridge) = await _controller();
     addTearDown(controller.dispose);
@@ -630,6 +662,46 @@ final class _RecoveringSubmission implements TranslatedSignUtteranceGateway {
       messageId: utterance.messageId,
       clientSequence: utterance.clientSequence,
       serverSequence: 2,
+      disposition: 'accepted',
+    );
+  }
+}
+
+final class _RejectingSubmission implements TranslatedSignUtteranceGateway {
+  int submitCalls = 0;
+  int _nextSequence = 0;
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  String? get configurationMessage => null;
+
+  @override
+  int get nextClientSequence => _nextSequence;
+
+  @override
+  bool get hasPendingRetry => false;
+
+  @override
+  Future<void> retryPendingSubmission() async {}
+
+  @override
+  Future<TranslatedSignUtteranceAcknowledgement> submit(
+    TranslatedSignUtterance utterance,
+  ) async {
+    submitCalls += 1;
+    if (submitCalls == 1) {
+      throw const TranslatedSignUtteranceSubmissionException(
+        code: 'invalid_utterance',
+        message: 'The backend rejected this message format.',
+      );
+    }
+    _nextSequence = utterance.clientSequence + 1;
+    return TranslatedSignUtteranceAcknowledgement(
+      messageId: utterance.messageId,
+      clientSequence: utterance.clientSequence,
+      serverSequence: 0,
       disposition: 'accepted',
     );
   }

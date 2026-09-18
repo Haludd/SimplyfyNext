@@ -768,7 +768,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final acceptedResult = result.isRecognized ? result : reviewableResult!;
     final word = acceptedResult.word!;
     if (_pendingUtterance != null) {
-      backendStatus = 'The current sentence is still being sent · wait for Send sentence to finish';
+      backendStatus =
+          'The current sentence is still being sent · wait for Send sentence to finish';
       return;
     }
     try {
@@ -834,8 +835,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// instead of waiting for the top one to clear the confidence gate.
   void addHypothesisWord(String label, double confidence) {
     if (_pendingUtterance != null) {
-      backendStatus =
-          'The current sentence is still being sent · wait for Send sentence to finish';
+      backendStatus = 'The current sentence is still being sent · wait for Send sentence to finish';
       notifyListeners();
       return;
     }
@@ -1134,9 +1134,21 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           : 'Utterance accepted · waiting for the room result';
     } on TranslatedSignUtteranceSubmissionException catch (error) {
       if (_disposed) return;
+      // A definitive backend rejection has already been removed from the
+      // room transport queue. Unlock this immutable draft too, while keeping
+      // its words in the tray so the signer can edit or resend them. For an
+      // uncertain response the room still owns the exact retry payload.
+      final unlocked =
+          !error.retryable && !_utteranceSubmission.hasPendingRetry;
+      if (unlocked) {
+        _pendingUtterance = null;
+        _draftMessageId = null;
+      }
       backendStatus = error.retryable
           ? '${error.message} The sentence is kept safe; use Send sentence when the room is available.'
-          : error.message;
+          : unlocked
+          ? '${error.message} The sentence tray is unlocked so you can edit or resend it.'
+          : '${error.message} The exact sentence is kept safe for confirmation.';
     } on Object catch (error) {
       if (_disposed) return;
       backendStatus =

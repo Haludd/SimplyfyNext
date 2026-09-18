@@ -310,6 +310,7 @@ final class RoomSessionController extends ChangeNotifier
       _scheduleTerminalRecovery(utterance.messageId);
       return acknowledgement;
     } on RoomSessionException catch (failure) {
+      _discardRejectedPending(failure);
       throw TranslatedSignUtteranceSubmissionException(
         code: failure.code,
         message: failure.message,
@@ -365,6 +366,9 @@ final class RoomSessionController extends ChangeNotifier
       _completePending(message.clientSequence);
       notifyListeners();
       return message;
+    } on RoomSessionException catch (failure) {
+      _discardRejectedPending(failure);
+      rethrow;
     } finally {
       _submissionInFlight = false;
       if (!_disposed) notifyListeners();
@@ -411,6 +415,9 @@ final class RoomSessionController extends ChangeNotifier
         _messages[message.key] = message;
         _completePending(message.clientSequence);
       }
+    } on RoomSessionException catch (failure) {
+      _discardRejectedPending(failure);
+      rethrow;
     } finally {
       _submissionInFlight = false;
       if (!_disposed) notifyListeners();
@@ -539,7 +546,7 @@ final class RoomSessionController extends ChangeNotifier
       _reconnectAttempt = 0;
       notifyListeners();
       if (_pendingRequest != null && !_submissionInFlight) {
-        unawaited(retryPending());
+        unawaited(_retryPendingAfterReconnect());
       }
     } on Object {
       _error = 'The room sent an unsupported event. Reconnecting…';
@@ -753,6 +760,35 @@ final class RoomSessionController extends ChangeNotifier
     _nextClientSequence = max(_nextClientSequence, acknowledgedSequence + 1);
     _pendingRequest = null;
     _persist();
+  }
+
+  /// Keep a request only when delivery is uncertain. A 4xx response proves
+  /// that the backend did not admit the payload, so retaining it would make
+  /// every later Send retry the same rejected sentence, including after a
+  /// browser refresh. An invalid success response remains pending because the
+  /// server may already have admitted it and an exact retry is then required.
+  void _discardRejectedPending(RoomSessionException failure) {
+    if (failure.retryable || failure.code == 'invalid_response') return;
+    _pendingRequest = null;
+    _persist();
+  }
+
+  Future<void> _retryPendingAfterReconnect() async {
+    try {
+      await retryPending();
+    } on RoomSessionException catch (failure) {
+      if (_disposed) return;
+      _error = failure.message;
+      notifyListeners();
+    } on TranslatedSignUtteranceSubmissionException catch (failure) {
+      if (_disposed) return;
+      _error = failure.message;
+      notifyListeners();
+    } on Object {
+      if (_disposed) return;
+      _error = 'The pending message could not be confirmed.';
+      notifyListeners();
+    }
   }
 
   Future<Map<String, dynamic>> _request(

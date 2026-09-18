@@ -252,6 +252,159 @@ void main() {
     expect(signAttempts, 2);
   });
 
+  test(
+    'a rejected sign payload is discarded so a corrected sentence can send',
+    () async {
+      var signAttempts = 0;
+      final client = MockClient((request) async {
+        if (request.url.path == '/v1/rooms') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'utterance_schema_version': '1.0',
+              'code': 'ABCDEFGH',
+              'participant_id': '11111111-1111-4111-8111-111111111111',
+              'role': 'signer',
+              'token': 'participant-secret',
+              'join_path': '/?room=ABCDEFGH',
+            }),
+            201,
+          );
+        }
+        if (request.url.path.endsWith('/sign-utterances')) {
+          signAttempts += 1;
+          if (signAttempts == 1) {
+            return http.Response(
+              jsonEncode(<String, String>{'error': 'invalid_utterance'}),
+              422,
+            );
+          }
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'event_schema_version': '1.0',
+              'type': 'utterance_ack',
+              'message_id': body['message_id'],
+              'client_sequence': body['client_sequence'],
+              'server_sequence': 0,
+              'disposition': 'accepted',
+            }),
+            202,
+          );
+        }
+        fail('Unexpected request: ${request.method} ${request.url.path}');
+      });
+      final room = RoomSessionController(
+        config: RoomClientConfig(apiOrigin: Uri.parse('http://127.0.0.1:8000')),
+        httpClient: client,
+        socketConnector: (_) => throw StateError('socket unavailable in test'),
+      );
+      addTearDown(room.dispose);
+      await room.create('Signer');
+
+      final fixture = jsonDecode(
+        File('../tests/fixtures/translated_sign_utterance_v1.json')
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      await expectLater(
+        room.submit(TranslatedSignUtterance.fromJson(fixture)),
+        throwsA(
+          isA<TranslatedSignUtteranceSubmissionException>()
+              .having((error) => error.code, 'code', 'invalid_utterance')
+              .having((error) => error.retryable, 'retryable', isFalse),
+        ),
+      );
+      expect(room.hasPendingRetry, isFalse);
+      expect(room.nextClientSequence, 0);
+
+      fixture['message_id'] = '22222222-2222-4222-8222-222222222222';
+      await room.submit(TranslatedSignUtterance.fromJson(fixture));
+
+      expect(room.hasPendingRetry, isFalse);
+      expect(room.nextClientSequence, 1);
+      expect(signAttempts, 2);
+    },
+  );
+
+  test('a stale retry that receives a definitive rejection stops blocking later sends', () async {
+    var signAttempts = 0;
+    final client = MockClient((request) async {
+      if (request.url.path == '/v1/rooms') {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'event_schema_version': '1.0',
+            'utterance_schema_version': '1.0',
+            'code': 'ABCDEFGH',
+            'participant_id': '11111111-1111-4111-8111-111111111111',
+            'role': 'signer',
+            'token': 'participant-secret',
+            'join_path': '/?room=ABCDEFGH',
+          }),
+          201,
+        );
+      }
+      if (request.url.path.endsWith('/sign-utterances')) {
+        signAttempts += 1;
+        if (signAttempts == 1) {
+          throw http.ClientException('response lost');
+        }
+        if (signAttempts == 2) {
+          return http.Response(
+            jsonEncode(<String, String>{'error': 'invalid_utterance'}),
+            422,
+          );
+        }
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'event_schema_version': '1.0',
+            'type': 'utterance_ack',
+            'message_id': body['message_id'],
+            'client_sequence': body['client_sequence'],
+            'server_sequence': 0,
+            'disposition': 'accepted',
+          }),
+          202,
+        );
+      }
+      fail('Unexpected request: ${request.method} ${request.url.path}');
+    });
+    final room = RoomSessionController(
+      config: RoomClientConfig(apiOrigin: Uri.parse('http://127.0.0.1:8000')),
+      httpClient: client,
+      socketConnector: (_) => throw StateError('socket unavailable in test'),
+    );
+    addTearDown(room.dispose);
+    await room.create('Signer');
+
+    final fixture = jsonDecode(
+      File('../tests/fixtures/translated_sign_utterance_v1.json')
+          .readAsStringSync(),
+    ) as Map<String, dynamic>;
+    await expectLater(
+      room.submit(TranslatedSignUtterance.fromJson(fixture)),
+      throwsA(isA<TranslatedSignUtteranceSubmissionException>()),
+    );
+    expect(room.hasPendingRetry, isTrue);
+
+    await expectLater(
+      room.retryPendingSubmission(),
+      throwsA(
+        isA<TranslatedSignUtteranceSubmissionException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_utterance',
+        ),
+      ),
+    );
+    expect(room.hasPendingRetry, isFalse);
+
+    fixture['message_id'] = '22222222-2222-4222-8222-222222222222';
+    await room.submit(TranslatedSignUtterance.fromJson(fixture));
+    expect(room.nextClientSequence, 1);
+    expect(signAttempts, 3);
+  });
+
   testWidgets(
     'recovers a terminal sign result when its socket event is missed',
     (tester) async {

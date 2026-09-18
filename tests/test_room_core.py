@@ -154,6 +154,40 @@ async def test_sequence_conflicts_and_repair_continuation():
     assert caught.value.status == 401
 
 
+async def test_signer_can_switch_between_builtin_and_personal_producers():
+    store = RoomStore()
+    room, signer, _ = await pair(store)
+    participant = store.authenticate(room, signer.token)
+
+    builtin = utterance()
+    store.admit(room, participant, builtin)
+    store.commit(room, participant, builtin.message_id, repair("unsupported_detail"))
+
+    personal_payload = builtin.model_dump(mode="json")
+    personal_payload.update(message_id=str(uuid4()), client_sequence=1)
+    personal_payload["producer"] = {
+        "recognizer_id": "personal_landmark_templates",
+        "recognizer_version": "personal_landmark_templates_v1",
+        "translator_id": "asl_label_to_english",
+        "translator_version": "1.0.0",
+        "vocabulary_version": "personal_signs_local_v1",
+        "confidence_kind": "normalized_model_score",
+    }
+    personal_payload["words"] = [
+        {"index": 0, "token_id": "word-0", "word": "I", "confidence": 0.56, "alternatives": []}
+    ]
+    personal = parse_value(TranslatedSignUtteranceV1, json.dumps(personal_payload))
+    personal_admission = store.admit(room, participant, personal)
+    assert personal_admission.ack.client_sequence == 1
+    assert participant.producer == personal.producer
+    store.commit(room, participant, personal.message_id, repair("unsupported_detail"))
+
+    builtin_again = utterance(2)
+    builtin_admission = store.admit(room, participant, builtin_again)
+    assert builtin_admission.ack.client_sequence == 2
+    assert participant.producer == builtin_again.producer
+
+
 @pytest.mark.parametrize("mode", ["before_dispatch", "during_provider", "late_provider", "retry"])
 async def test_end_races_erase_every_record_and_discard_late_work(mode):
     store = RoomStore()

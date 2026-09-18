@@ -355,12 +355,6 @@ class RoomStore:
             or participant.next_sequence > MAX_SEQUENCE
         ):
             raise RoomFailure(429, "rate_limited")
-        if (
-            isinstance(request, TranslatedSignUtteranceV1)
-            and participant.producer is not None
-            and participant.producer != request.producer
-        ):
-            raise RoomFailure(409, "sequence_conflict")
         # Capture before reservation: snapshot failure cannot leave a stranded pending slot.
         context = self.context(room) if is_sign else None
         self._rate(participant.request_times, self.limits.messages_per_minute)
